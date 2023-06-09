@@ -65,10 +65,10 @@ ui <- fluidPage(
   
   sidebarLayout(
     sidebarPanel(
-      numericInput("Percent_PPC_Spoil","What is the percentage of milk spoiled due to PPC?", value = 30),
+      numericInput("Percent_PPC_Spoil","What is the percentage of milk spoiled due to PPC?", value = 40),
       numericInput("count_mean1", "What is the average (mean) PPC bacterial concentration (log10 cfu/mL) in milk?", value = 0.38),
       numericInput("count_sd1", "What is the standard deviation of PPC bacterial concentration (log10 cfu/mL) in milk?", value = 1.11),
-      numericInput("Percent_spore_Spoil","What is the percentage of milk spoiled due to sporeformers?", value = 50),
+      numericInput("Percent_spore_Spoil","What is the percentage of milk spoiled due to sporeformers?", value = 40),
       numericInput("count_mean2", "What is the average (mean) spore concentration (log10 MPN/mL) in milk?", value = -0.72),
       numericInput("count_sd2", "What is the standard deviation of spore concentration (log10 MPN/mL) in milk?", value = 0.99),
       selectInput("threshold","Spoilage threshold", c("US regulation limit (Pasteurized Milk Ordinance): 20,000 CFU/mL" = log10(20000))), 
@@ -81,7 +81,7 @@ ui <- fluidPage(
       checkboxInput("mt1","Improved preventive maintenance (1log reduction)", value=FALSE),
       checkboxInput("mt2","super improved preventive maintenance (3log reduction)", value=FALSE),
       h5(strong("Improved temperature control")),
-      checkboxInput("tc","Consumer home storage temperature control (<=6°C)", value=FALSE),
+      checkboxInput("tc","Consumer home storage temperature control (<=4°C)", value=FALSE),
       submitButton("Submit", icon("refresh"))),
     
     mainPanel(
@@ -137,7 +137,7 @@ set.seed(1)
       temp <- rep(NA, n_sim*n_units)
       for (i in 1:(n_sim*n_units)){
         number <- rlaplace(1,m=4.06,s=2.31)
-        while (number > 6 | number < -1) {
+        while (number > 4 | number < -1) {
           number <- rlaplace(1,m=4.06,s=2.31)
         }
         temp[i] <- number
