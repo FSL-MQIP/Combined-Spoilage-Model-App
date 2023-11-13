@@ -1,0 +1,147 @@
+---
+title: "Fitting Primary Growth Model"
+author: "Jun Su"
+date: "2023-10-23"
+output: pdf_document
+---
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "C:/Users/sujun/Documents/GitHub/Combined-Spoilage-Model-App/Refit Primary Growth Model")
+```
+
+# set environment
+```{r}
+# load packages
+library(nlsMicrobio)
+library(minpack.lm)
+
+# load primary growth models
+source("UtilityFunctions_baranyi.R")
+```
+
+# fit sporeformer growth data 
+# import growth data set 
+```{r}
+# sporeformer growth data 
+data1 = read.csv("SporeformerRawGrowth.csv")
+data1 = subset(data1, CountType == "Total")
+data2 = read.csv("SporeformerRawGrowthTrial2.csv")
+data2 = subset(data2, CountType == "Total")
+data_sporeformer = rbind(data1, data2)
+colnames(data_sporeformer)[1] <- "t"
+data_sporeformer$LOG10N <- as.numeric(data_sporeformer$LOG10N)
+data_sporeformer <- data_sporeformer[order(data_sporeformer$Isolate),]
+data_sporeformer <- na.omit(data_sporeformer)
+
+# create a list of data frames, one for each isolate
+data_list <- split(data_sporeformer, list(data_sporeformer$Isolate))
+
+# sporeformer starting values
+starting_values_sporeformer <-read.csv("Starting_value_sporeformers.csv")
+colnames(starting_values_sporeformer)[1] <- "Isolate"
+starting_values_sporeformer<-starting_values_sporeformer[order(starting_values_sporeformer$Isolate),]
+```
+
+# subset data and fit Baranyi model
+```{r}
+# initialize a list to store the fits
+fit_list <- list()
+
+# loop over each sample and its repetitions
+for (i in 1:length(data_list)) {
+  # subset the data for the current sample and rep
+  sub_data <- data_list[[i]]
+  
+  # extract the sample and rep information
+  isolate <- unique(sub_data$Isolate)
+  
+  # set the starting values for the current isolate and rep
+  start_values <- c(LOG10N0 = starting_values_sporeformer$LOG10N0[i],
+                    lag = starting_values_sporeformer$lag[i],
+                    mumax = starting_values_sporeformer$mumax[i],
+                    LOG10Nmax = starting_values_sporeformer$LOG10Nmax[i])
+  
+  # fit the Baranyi model to the subset of data
+  fit <- nlsLM(LOG10N ~ baranyi_log10N(t,lag,mumax,LOG10N0,LOG10Nmax), data=sub_data,
+               start = start_values, 
+               lower = c(0,0,0,0))
+  
+  # extract the model coefficients
+  coef_values <- coefficients(fit)
+  
+  # add the fit and its summary to the fit list
+  fit_list[[i]] <- data.frame(isolate=isolate,  
+                              LOG10N0 = coef_values["LOG10N0"],
+                              lag = coef_values["lag"],
+                              mumax = coef_values["mumax"],
+                              LOG10Nmax = coef_values["LOG10Nmax"])
+}
+
+# combine the fits into a single data frame
+fits_sporefomers <- do.call(rbind, fit_list)
+write.csv(fits_sporefomers,"sporeformer_gp.csv")
+```
+
+# fit ppc growth data 
+# import growth data set
+```{r}
+# ppc growth data 
+data3 = read.csv("PPCRawGrowthData.csv")
+colnames(data3)[1] <- "t"
+data3$LOG10N <- as.numeric(data3$LOG10N)
+data3$Isolate <- trimws(data3$Isolate, "left")
+data3 <- data3[order(data3$Isolate),]
+data3 <- na.omit(data3)
+
+# create a list of data frames, one for each isolate and rep
+data_list <- split(data3, list(data3$Isolate, data3$Rep))
+
+# ppc starting values
+starting_values_ppc<-read.csv("Starting_value_ppc.csv")
+colnames(starting_values_ppc)[1] <- "Isolate"
+starting_values_ppc$Isolate <-  trimws(starting_values_ppc$Isolate, "left")
+starting_values_ppc<-starting_values_ppc[order(starting_values_ppc$Isolate),]
+```
+
+# subset data and fit Baranyi model 
+```{r}
+# initialize a list to store the fits
+fit_list <- list()
+
+# loop over each sample and its repetitions
+for (i in 1:length(data_list)) {
+  # subset the data for the current sample and rep
+  sub_data <- data_list[[i]]
+  
+  # extract the sample and rep information
+  isolate <- unique(sub_data$Isolate)
+  rep <- unique(sub_data$Rep)
+  
+  # set the starting values for the current isolate and rep
+  start_values <- c(LOG10N0 = starting_values_ppc$LOG10N0[i],
+                    lag = starting_values_ppc$lag[i],
+                    mumax = starting_values_ppc$mumax[i],
+                    LOG10Nmax = starting_values_ppc$LOG10Nmax[i])
+  
+  # fit the Baranyi model to the subset of data
+  fit <- nlsLM(LOG10N ~ baranyi_log10N(t,lag,mumax,LOG10N0,LOG10Nmax),    
+               data=sub_data,
+               start = start_values, 
+               lower = c(0,0,0,0))
+  
+  # extract the model coefficients
+  coef_values <- coefficients(fit)
+  
+  # add the fit and its summary to the fit list
+  fit_list[[i]] <- data.frame(isolate=isolate, rep=rep, 
+                              LOG10N0 = coef_values["LOG10N0"],
+                              lag = coef_values["lag"],
+                              mumax = coef_values["mumax"],
+                              LOG10Nmax = coef_values["LOG10Nmax"])
+}
+
+# combine the fits into a single data frame
+fits_ppc <- do.call(rbind, fit_list)
+write.csv(fits_ppc,"ppc_gp.csv")
+```
+
