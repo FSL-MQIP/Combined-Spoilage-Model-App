@@ -207,7 +207,6 @@ predict_dynamic_growth <- function (times, env_conditions, primary_pars, seconda
   })
   gammas <- do.call(rbind.data.frame, gammas)
   names(gammas) <- names(secondary_models)
-  print(dim(gammas))
   gammas <- bind_cols(time = times, gammas)
   out <- list(simulation = my_sim, gammas = as_tibble(gammas), 
               env_conditions = my_env, primary_pars = primary_pars, 

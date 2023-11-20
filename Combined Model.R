@@ -170,7 +170,7 @@ for (i in 1:10000){
 }
 data$T_H <- temps
 ## (b) Define t_H as 35 days for all units
-data$t_H <- rep(35, each = n_sim*n_unit)
+data$t_H <- rep(14, each = n_sim*n_unit)
 
 # Generate spoilage frequency and assign spoilage types
 num_ppc <- round(40/ 100 * n_sim * n_unit)
@@ -276,6 +276,9 @@ model_data <- model_data %>%
   mutate(Nmax = rnorm(n = 1,
                          mean = Mean_Nmax, 
                          sd = StdDev_Nmax))
+model_data$Nmax <- 10^(model_data$Nmax)
+
+model_data$N0 <- 10^(model_data$N0)
 
 model_data <- model_data %>%
   mutate(Tmin = case_when(
@@ -315,18 +318,26 @@ env_cond_temp <- matrix(c(model_data$T_F,
                           model_data$T_H), ncol = 10)
 
 # Run simulation
-final_conc <- model_data %>%
-  rowwise() %>%
-  mutate(final_conc_isolate = {
-    my_primary <- list(mu_opt = mu_opt, Nmax = Nmax, N0 = N0, Q0 = Q0)
-    sec_temperature <- list(model = "reducedRatkowsky", xmin = Tmin, b = b, xopt = Topt)
-    my_secondary <- list(temperature = sec_temperature)
-    growth <- predict_dynamic_growth(times = env_cond_time,
-                                     env_conditions = tibble(time = env_cond_time,
-                                                             temperature = env_cond_temp),
-                                     my_primary,
-                                     my_secondary)
-    sim <- growth$simulation
-    return(tail(sim$logN, 1))
-  }) %>%
-  pull(final_conc_isolate)
+num_iterations <- nrow(model_data)
+all_simulations <- list()
+
+for (i in 1:num_iterations) {
+  my_primary <- list(mu_opt = model_data$mu_opt[i], Nmax = model_data$Nmax[i], N0 = model_data$N0[i], Q0 = model_data$Q0[i])
+  sec_temperature <- list(model = "reducedRatkowsky", xmin = model_data$Tmin[i], b = model_data$b[i], xopt = model_data$Topt[i])
+  my_secondary <- list(temperature = sec_temperature)
+  growth <- predict_dynamic_growth(times = env_cond_time[i,],
+                                   env_conditions = tibble(time = env_cond_time[i,],
+                                                           temperature = env_cond_temp[i,]),
+                                   my_primary,
+                                   my_secondary)
+  sim <- growth$simulation
+  
+  # Store each simulation in a list
+  all_simulations[[i]] <- sim
+}
+
+final_conc <- t(sapply(all_simulations, function(x) sapply(x, tail, n=1)))
+final_conc <- as.data.frame(final_conc)
+final_conc <- final_conc$logN
+
+
