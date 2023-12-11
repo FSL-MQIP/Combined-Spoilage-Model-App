@@ -1,3 +1,6 @@
+# Set work directory 
+setwd("C:/Users/sujun/Documents/GitHub/Combined-Spoilage-Model-App")
+
 # Load packages
 library(dplyr)
 library(tidyr)
@@ -169,8 +172,8 @@ for (i in 1:10000){
   temps[i] <- number
 }
 data$T_H <- temps
-## (b) Define t_H as 35 days for all units
-data$t_H <- rep(14, each = n_sim*n_unit)
+## (b) Define t_H as 7 days for all units
+data$t_H <- rep(7, each = n_sim*n_unit)
 
 # Generate spoilage frequency and assign spoilage types
 num_ppc <- round(40/ 100 * n_sim * n_unit)
@@ -338,6 +341,18 @@ for (i in 1:num_iterations) {
 
 final_conc <- t(sapply(all_simulations, function(x) sapply(x, tail, n=1)))
 final_conc <- as.data.frame(final_conc)
-final_conc <- final_conc$logN
 
+# Generate output 
+model_data_sub <- model_data[,c("lot_id","unit_id")]
+logN <- final_conc[,c("logN")]
+df <- cbind(model_data_sub,logN)
+df$logN[is.na(df$logN)] <- 0
 
+# Calculate the sum of logN over 6 logs for each lot_id
+result <- df %>%
+  group_by(lot_id) %>%
+  summarize(sum_logN_over_6_logs = sum(logN>6)) %>%
+  mutate(percentage_over_6_logs = (sum_logN_over_6_logs/n_unit * 100))
+
+min(result$percentage_over_6_logs)
+max(result$percentage_over_6_logs)
