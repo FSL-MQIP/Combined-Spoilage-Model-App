@@ -24,6 +24,7 @@ spore_initial <- read.csv("InputData/spore_initial.csv")
 no_spoil_initial <- read.csv("InputData/initialcounts_060622.csv")
 # Growth parameters
 data_ppc <- read.csv("InputData/ppc_gp.csv")
+data_ppc$mumax <- 0.684 * data_ppc$mumax
 data_sporeformer <- read.csv("InputData/sporeformer_gp.csv")
 gp_noSpoil <- read.csv("InputData/NoSpoil_gp.csv")
 colnames(gp_noSpoil)[1] <- "isolate"
@@ -146,8 +147,29 @@ data$t_F <- rep(runif(n_sim*n_unit,min=1,max=2)) #uniform distribution
 # Stage 2: transport from facility to retail store
 ## (a)  Sample the temperature distribution
 data$T_T <- rep(rtri(n_sim*n_unit,min=1.7,max=10.0,mode=4.4)) #triangular distribution
+## Scenario d2 
+## (a)  Sample the temperature distribution
+# temps <- rep(NA, n_sim*n_unit)
+# for (i in 1:(n_sim*n_unit)){
+   # number <- rtri(1, min=1.7,max=10.0,mode=4.4)
+   # while (number > 4) {
+   # number <- rtri(1, min=1.7,max=10.0,mode=4.4)
+   # }
+   # temps[i] <- number
+# }
+# data$T_T <- temps
 ## (b) Sample the transportation time (in days) distribution
 data$t_T <- rep(rtri(n_sim*n_unit,min=1,max=10,mode=5))
+## Scenario e
+# times <- rep(NA, n_sim*n_unit)
+# for (i in 1:(n_sim*n_unit)){
+   # number <- rtri(1, min=1,max=10,mode=5)
+   # while (number > 7) {
+   # number <- rtri(1, min=1,max=10,mode=5)
+   # }
+   # times[i] <- number
+# }
+# data$t_T <- times
 
 # Stage 3: storage/display at retail store
 ## (a)  Sample the temperature distribution
@@ -163,8 +185,8 @@ data$t_T2 <- rep(rtruncnorm(n_sim*n_unit,a=0.01,b=0.24, mean=0.04,sd=0.02)) #tru
 
 ## Stage 5: home storage 
 ## (a)  Sample the temperature distribution
-temps <- rep(NA, 10000)
-for (i in 1:10000){
+temps <- rep(NA, n_sim*n_unit)
+for (i in 1:(n_sim*n_unit)){
   number <- rlaplace(1,m=4.06,s=2.31)
   while (number > 15 | number < -1) {
     number <- rlaplace(1,m=4.06,s=2.31) #truncated laplace distribution 
@@ -172,12 +194,28 @@ for (i in 1:10000){
   temps[i] <- number
 }
 data$T_H <- temps
-## (b) Define t_H as 7 days for all units
-data$t_H <- rep(7, each = n_sim*n_unit)
+
+## Scenario d1
+# temps <- rep(NA, n_sim*n_unit)
+# for (i in 1:(n_sim*n_unit)){
+  # number <- rlaplace(1,m=4.06,s=2.31)
+  # while (number > 4 | number < -1) {
+      # number <- rlaplace(1,m=4.06,s=2.31)
+    # }
+  # temps[i] <- number
+  # }
+# data$T_H <- temps
+
+## (b) Define t_H for 21 and 28-day shelf life for all units
+data$t_elapse = data$t_F + data$t_T + data$t_S + data$t_T2
+data$t_H = 21 - data$t_elapse
+# data$t_H = 28 - data$t_elapse
 
 # Generate spoilage frequency and assign spoilage types
-num_ppc <- round(40/ 100 * n_sim * n_unit)
-num_spore <- round(40/ 100 * n_sim * n_unit)
+num_ppc <- round(55.4/ 100 * n_sim * n_unit)
+## Scenario a Reduce PPC prevalence by 20% points 
+# num_ppc <- round(35.4/ 100 * n_sim * n_unit)
+num_spore <- round(22.4/ 100 * n_sim * n_unit)
 num_no_spoil <- n_sim*n_unit - num_ppc - num_spore
 spoiler_types <- c(rep("PPC", num_ppc), rep("Spore", num_spore), rep("No Spoil", num_no_spoil))
 data$spoilage_type <- sample(spoiler_types, n_sim * n_unit)
@@ -215,7 +253,15 @@ model_data_ppc <- merge(model_data_ppc, df1, by = "lot_id")
 model_data_ppc <- model_data_ppc %>%
   rowwise() %>%
   mutate(N0 = rnorm(n = 1, mean = initial_mean, sd = initial_sd))
+
+## Scenario c PPC reduction strategy 
+# model_data_ppc <- model_data_ppc %>%
+  # rowwise() %>%
+  # mutate(N0 = rnorm(n = 1, mean = initial_mean, sd = initial_sd),
+        # log_reduction = runif(1, min = 1, max = 3),
+        # N0 = N0 - log_reduction)
 model_data_ppc <- as.data.frame(model_data_ppc)
+# model_data_ppc <- model_data_ppc[, -ncol(model_data_ppc)]
 
 # sporeformer 
 spore_initial_mean <- sample(spore_mean_distr, 100)
@@ -229,7 +275,22 @@ model_data_spore <- merge(model_data_spore, df2, by = "lot_id")
 model_data_spore <- model_data_spore %>%
   rowwise() %>%
   mutate(N0 = rnorm(n = 1, mean = initial_mean, sd = initial_sd))
+
+## Scenario b1 Microfiltration 
+# model_data_spore <- model_data_spore %>%
+  # rowwise() %>%
+  # mutate(N0 = rnorm(n = 1, mean = initial_mean, sd = initial_sd),
+        # log_reduction = runif(1, min = 0.6, max = 3.1),
+        # N0 = N0 - log_reduction)
+
+## Scenario b2 Bactofugation
+# model_data_spore <- model_data_spore %>%
+  # rowwise() %>%
+  # mutate(N0 = rnorm(n = 1, mean = initial_mean, sd = initial_sd),
+        # log_reduction = runif(1, min = 1.23, max = 1.64),
+        # N0 = N0 - log_reduction)
 model_data_spore <- as.data.frame(model_data_spore)
+# model_data_spore <- model_data_spore[, -ncol(model_data_spore)]
 
 # no Spoil
 no_spoil_initial <- no_spoil_initial %>%
@@ -323,7 +384,6 @@ env_cond_temp <- matrix(c(model_data$T_F,
 # Run simulation
 num_iterations <- nrow(model_data)
 all_simulations <- list()
-
 for (i in 1:num_iterations) {
   my_primary <- list(mu_opt = model_data$mu_opt[i], Nmax = model_data$Nmax[i], N0 = model_data$N0[i], Q0 = model_data$Q0[i])
   sec_temperature <- list(model = "reducedRatkowsky", xmin = model_data$Tmin[i], b = model_data$b[i], xopt = model_data$Topt[i])
@@ -334,25 +394,51 @@ for (i in 1:num_iterations) {
                                    my_primary,
                                    my_secondary)
   sim <- growth$simulation
-  
   # Store each simulation in a list
   all_simulations[[i]] <- sim
 }
 
 final_conc <- t(sapply(all_simulations, function(x) sapply(x, tail, n=1)))
 final_conc <- as.data.frame(final_conc)
+final_conc$logN[is.na(final_conc$logN)] <- model_data_noSpoil$N0
+final_conc$N[is.na(final_conc$N)] <- 10^(model_data_noSpoil$N0)
 
 # Generate output 
 model_data_sub <- model_data[,c("lot_id","unit_id")]
 logN <- final_conc[,c("logN")]
 df <- cbind(model_data_sub,logN)
-df$logN[is.na(df$logN)] <- 0
 
 # Calculate the sum of logN over 6 logs for each lot_id
-result <- df %>%
+result1 <- df %>%
+  group_by(lot_id) %>%
+  summarize(avg = mean(logN)) 
+
+result2 <- df %>%
   group_by(lot_id) %>%
   summarize(sum_logN_over_6_logs = sum(logN>6)) %>%
   mutate(percentage_over_6_logs = (sum_logN_over_6_logs/n_unit * 100))
 
-min(result$percentage_over_6_logs)
-max(result$percentage_over_6_logs)
+median(result1$avg)
+quantile(result1$avg, c(0.025, 0.975))
+
+min(result2$percentage_over_6_logs)
+max(result2$percentage_over_6_logs)
+
+hist(result1$avg, 
+     main="Distribution of the mean bacterial concentrations at shelf life day 28",
+     xlab="Mean bacterial concentration (log10 CFU/mL)",
+     ylab="Frequency",
+     xlim = c(3.5, 6.5),
+     ylim = c(0, 30),
+     breaks = 10,
+     col="orange")
+
+hist(result2$percentage_over_6_logs,
+     main="Distribution of the percent milk contaniers > 6 logs at shelf life day 28",
+     xlab="Percentage of milk contaniers > 6 logs  (%)",
+     ylab="Frequency",
+     xlim = c(40, 65),
+     ylim = c(0, 30),
+     breaks = 10,
+     col="orange")
+
