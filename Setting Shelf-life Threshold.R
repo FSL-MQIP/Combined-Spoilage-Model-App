@@ -28,7 +28,7 @@
     colnames(gp_noSpoil)[1] <- "isolate"
     # AT frequency
     ppc_ST_freq <- read.csv("InputData/ppc_STfreq_clean.csv")
-    spore_AT_freq <- read.csv("InputData/spore_ATfreq_new.csv")
+    spore_AT_freq <- read.csv("InputData/spore_ATfreq_clean.csv")
     
     # Set seed
     set.seed(1)
@@ -179,8 +179,8 @@
     model_data_ppc$STorAT <- paste0("ST_", model_data_ppc$STorAT)
     # # spore
     model_data_spore <- subset(data, spoilage_type == "Spore")
-    model_data_spore$STorAT <- rep(15, nrow(model_data_spore))
-    # model_data_spore$STorAT <- sample(spore_AT_freq$ClosestAT, nrow(model_data_spore),replace=T)
+    # model_data_spore$STorAT <- rep(15, nrow(model_data_spore))
+    model_data_spore$STorAT <- sample(spore_AT_freq$ClosestAT, nrow(model_data_spore),replace=T)
     model_data_spore$STorAT <- paste0("AT_", model_data_spore$STorAT)
     # no spoil
     model_data_noSpoil <- subset(data, spoilage_type == "No Spoil")
@@ -340,7 +340,7 @@
     SPC_D21_sim = log10(Spore_D21 + Microflora)
     # CVTA_D21_sim = df_D21$logN
     
-    # percent_spoiled_spore_6dC <- df %>%
+    # percent_spoiled_ppc_6dC <- df %>%
       # group_by(time) %>%
       # summarise(percent = sum(logN > log10(20000))/10000*100)
     

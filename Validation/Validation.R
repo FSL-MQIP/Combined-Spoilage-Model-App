@@ -11,7 +11,7 @@ CVTA_D14 <- na.omit(CVTA_D14)
 CVTA_D21 <- log10(combined_data_PPC$CVTA_D21)
 CVTA_D21 <- na.omit(CVTA_D21)
 
-combined_data_Spore <- subset(combined_data_sub,spoilagetype == "spore spoilage")
+combined_data_Spore <- subset(combined_data_sub,spoilagetype %in% c("spore spoilage", "no spoilage"))
 SPC_D1 <- combined_data_sub$SPC_DI
 SPC_D7 <- log10(combined_data_Spore$SPC_D7)
 SPC_D7 <- na.omit(SPC_D7)

@@ -4,6 +4,7 @@ library(ggplot2)
 
 test_data = read.csv("test_data_tier_plant.csv")
 train_data = read.csv("train_data_tier_plant.csv")
+combined_dataset = rbind(test_data,train_data)
 combined_dataset = rbind(test_data[,c(5,6,17)],train_data[,c(5,6,17)])
 
 # Not group by Tier 1, 2, 3
