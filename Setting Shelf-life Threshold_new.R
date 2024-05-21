@@ -108,13 +108,23 @@
     
     ## Stage 5: home storage 
     ## (a)  Sample the temperature distribution
+    # temps <- rep(NA, n_sim*n_unit)
+    # for (i in 1:(n_sim*n_unit)){
+      # number <- rlaplace(1,m=4.06,s=2.31)
+      # while (number > 15 | number < -1) {
+        # number <- rlaplace(1,m=4.06,s=2.31) #truncated laplace distribution 
+      # }
+      # temps[i] <- number
+    # }
+    # data$T_H <- temps
+    
     temps <- rep(NA, n_sim*n_unit)
     for (i in 1:(n_sim*n_unit)){
-      number <- rlaplace(1,m=4.06,s=2.31)
-      while (number > 15 | number < -1) {
-        number <- rlaplace(1,m=4.06,s=2.31) #truncated laplace distribution 
-      }
-      temps[i] <- number
+    number <- rlaplace(1,m=4.06,s=2.31)
+    while (number > 4 | number < -1) {
+    number <- rlaplace(1,m=4.06,s=2.31)
+    }
+    temps[i] <- number
     }
     data$T_H <- temps
     
@@ -125,9 +135,9 @@
     # Generate spoilage frequency and assign spoilage types
     # PPC Spoilage %
     # Good Plant
-    # data <- data %>%
-      # group_by(lot_id) %>%
-      # mutate (P_ppc = runif(1, 0.125, 0.313))
+    data <- data %>%
+      group_by(lot_id) %>%
+      mutate (P_ppc = runif(1, 0.125, 0.313))
     
     # Medium Plant
     # data <- data %>%
@@ -140,7 +150,7 @@
       # mutate (P_ppc = runif(1, 0.75, 1))
     
     # Sanity check 
-    data$P_ppc = 1
+    # data$P_ppc = 0
     
     # Assign spoilage type
     result_list <- list()
@@ -274,7 +284,7 @@
                               model_data$T_H), ncol = 10)
     
     # Run simulation  
-    my_times <- seq(0, 21, length = 22)
+    my_times <- seq(0, 35)
     num_iterations <- nrow(model_data)
     all_simulations <- list()
     for (i in 1:num_iterations) {
@@ -282,10 +292,10 @@
       sec_temperature <- list(model = "reducedRatkowsky", xmin = model_data$Tmin[i], b = model_data$b[i], xopt = model_data$Topt[i])
       my_secondary <- list(temperature = sec_temperature)
       growth <- predict_dynamic_growth(times = my_times,
-                                       # env_conditions = tibble(time = env_cond_time[i,],
-                                                               # temperature = env_cond_temp[i,]),
-                                       env_conditions = tibble(time = my_times,
-                                                               temperature = 6),
+                                       env_conditions = tibble(time = env_cond_time[i,],
+                                                               temperature = env_cond_temp[i,]),
+                                       # env_conditions = tibble(time = my_times,
+                                                               # temperature = 6),
                                        my_primary,
                                        my_secondary)
       sim <- growth$simulation
@@ -295,46 +305,46 @@
     final_conc <- do.call(rbind, all_simulations)
     
     # Generate output 
-    model_data_1 <- model_data[rep(1:nrow(model_data), each = 22), ]
-    model_data_sub <- model_data_1[,c("lot_id","unit_id","N0","spoilage_type", "STorAT")]
-    # model_data_sub <- model_data_1[,c("lot_id","unit_id","spoilage_type", "t_F", "T_F", "t_T", "T_T", 
-                                    # "t_S", "T_S", "t_T2", "T_T2", "T_H")]
+    model_data_1 <- model_data[rep(1:nrow(model_data), each = 36), ]
+    # model_data_sub <- model_data_1[,c("lot_id","unit_id","N0","spoilage_type", "STorAT")]
+    model_data_sub <- model_data_1[,c("lot_id","unit_id","spoilage_type", "t_F", "T_F", "t_T", "T_T", 
+                                    "t_S", "T_S", "t_T2", "T_T2", "T_H")]
     count_result <- final_conc[,c("time","N","logN")]
     df <- cbind(model_data_sub,count_result)
     
-    df_D7 = subset(df, time == "7")
-    df_D14 = subset(df, time == "14")
-    df_D21 = subset(df, time == "21")
+    # df_D7 = subset(df, time == "7")
+    # df_D14 = subset(df, time == "14")
+    # df_D21 = subset(df, time == "21")
     
     # microflora
     # Microflora <- sample(SPC_D1, 10000, replace = TRUE)
     
     # Spore_D7 =  df_D7$N 
     # SPC_D7_sim = log10(Spore_D7 + Microflora)
-    CVTA_D7_sim = df_D7$logN
+    # CVTA_D7_sim = df_D7$logN
     
     # Spore_D14 = df_D14$N
     # SPC_D14_sim = log10(Spore_D14 + Microflora)
-    CVTA_D14_sim = df_D14$logN
+    # CVTA_D14_sim = df_D14$logN
     
     # Spore_D21 = df_D21$N
     # SPC_D21_sim = log10(Spore_D21 + Microflora)
-    CVTA_D21_sim = df_D21$logN
+    # CVTA_D21_sim = df_D21$logN
     
     # percent_spoiled_spore_6dC <- df %>%
       # group_by(time) %>%
       # summarise(percent = sum(logN > log10(20000))/10000*100)
     
     # Calculate the mean and median conc. for each day 
-    result_bad <- df %>%
-      group_by(time) %>%
-      summarize(mean_logN = mean(logN),
-                median_logN = median(logN),
-                meanN = mean(N),
-                log_meanN = log10(mean(N)))
+    # result_bad <- df %>%
+      # group_by(time) %>%
+      # summarize(mean_logN = mean(logN),
+                # median_logN = median(logN),
+                # meanN = mean(N),
+                # log_meanN = log10(mean(N)))
     
     # Calculate the sum of logN over 6 logs for each lot_id
-    summary_stats_bad <- list()
+    summary_stats_good <- list()
     for (i in 1:35) {
       filtered_data <- subset(df, time == i)
       percent <- filtered_data %>%
@@ -342,19 +352,16 @@
         summarise(percent = sum(logN > 6))
       percent$mean_percent <- mean(percent$percent)
       percent$median_percent <- median(percent$percent)
-      percent$perc_2.5 <- quantile(percent$percent, probs = 0.025)
-      percent$perc_97.5 <- quantile(percent$percent, probs = 0.975)
-      percent <- percent[c("mean_percent", "median_percent", "perc_2.5", "perc_97.5")][1,]
-      summary_stats_bad[[i]] <- percent
+      percent$perc_25 <- quantile(percent$percent, probs = 0.25)
+      percent$perc_75 <- quantile(percent$percent, probs = 0.75)
+      percent <- percent[c("mean_percent", "median_percent", "perc_25", "perc_75")][1,]
+      summary_stats_good[[i]] <- percent
     }
-    summary_stats_bad <- do.call(rbind,summary_stats_bad)
+    summary_stats_good <- do.call(rbind,summary_stats_good)
     
-write.csv(summary_stats_good, "summary_stats_good_0418.csv")
-write.csv(result_good, "result_good_new.csv")
-write.csv(summary_stats_medium, "summary_stats_medium_0418.csv")
-write.csv(result_medium, "result_medium_new.csv")
-write.csv(summary_stats_bad, "summary_stats_bad_0418.csv")
-write.csv(result_bad, "result_bad_new.csv")
+write.csv(summary_stats_good, "summary_stats_good_below4.csv")
+write.csv(summary_stats_medium, "summary_stats_medium_below4.csv")
+write.csv(summary_stats_bad, "summary_stats_bad_below4.csv")
 
 # plot 
 ggplot(spore_count_6dC, aes(x = logN, fill = factor(time))) +
