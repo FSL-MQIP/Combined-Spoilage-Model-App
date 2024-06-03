@@ -18,6 +18,9 @@
     source("UtilityFunctions_dynamic_growth.R")
     
     # Input data 
+    # Initial contamination levels
+    ppc_initial <- read.csv("InputData/ppc_initial.csv")
+    spore_initial <- read.csv("InputData/spore_initial.csv")
     # Growth parameters
     data_ppc <- read.csv("InputData/ppc_gp.csv")
     data_ppc$mumax <- 0.684 * data_ppc$mumax
@@ -28,6 +31,56 @@
     
     # Set seed
     set.seed(1)
+    
+    # Generate input parameter distributions 
+    # Generate uncertainty distributions for initial contamination levels
+    # PPC initial contamination by bootstrapping 
+    means <- numeric(1000)
+    std_deviations <- numeric(1000)
+    
+    for (i in 1:1000) {
+      sample <- sample(ppc_initial$LOG.initial, size = nrow(ppc_initial), replace = TRUE)
+      sample_mean <- mean(sample)
+      sample_std <- sd(sample)
+      means[i] <- sample_mean
+      std_deviations[i] <- sample_std
+    }
+    
+    ppc_mean_nfit  <- fitdist(means, "norm")
+    ppc_sd_nfit  <- fitdist(std_deviations, "norm")
+    mean_ppc_mean <- ppc_mean_nfit$estimate[1]
+    sd_ppc_mean <- ppc_mean_nfit$estimate[2]
+    mean_ppc_sd <- ppc_sd_nfit$estimate[1]
+    sd_ppc_sd <- ppc_sd_nfit$estimate[2]
+    
+    # Generate normal distribution for ppc_mean 
+    ppc_mean_distr <- rnorm(1000, mean_ppc_mean, sd_ppc_mean)
+    # Generate normal distribution for ppc_sd
+    ppc_sd_distr <- rnorm(1000, mean_ppc_sd, sd_ppc_sd)
+    
+    # Sporeformer initial contamination by bootstrapping
+    means <- numeric(1000)
+    std_deviations <- numeric(1000)
+    
+    for (i in 1:1000) {
+      sample <- sample(spore_initial$log10MPN, size = nrow(spore_initial), replace = TRUE)
+      sample_mean <- mean(sample)
+      sample_std <- sd(sample)
+      means[i] <- sample_mean
+      std_deviations[i] <- sample_std
+    }
+    
+    spore_mean_nfit  <- fitdist(means, "norm")
+    spore_sd_nfit  <- fitdist(std_deviations, "norm")
+    mean_spore_mean <- spore_mean_nfit$estimate[1]
+    sd_spore_mean <- spore_mean_nfit$estimate[2]
+    mean_spore_sd <- spore_sd_nfit$estimate[1]
+    sd_spore_sd <- spore_sd_nfit$estimate[2]
+    
+    # Generate normal distribution for spore_mean 
+    spore_mean_distr <- rnorm(1000, mean_spore_mean, sd_spore_mean)
+    # Generate normal distribution for spore_sd
+    spore_sd_distr <- rnorm(1000, mean_spore_sd, sd_spore_sd)
     
     # Get mean and sd for PPC growth parameters h0, b, log10Nmax and Topt
     data_ppc$h0 <- data_ppc$lag * data_ppc$mumax
@@ -108,46 +161,47 @@
     
     ## Stage 5: home storage 
     ## (a)  Sample the temperature distribution
-    # temps <- rep(NA, n_sim*n_unit)
-    # for (i in 1:(n_sim*n_unit)){
-      # number <- rlaplace(1,m=4.06,s=2.31)
-      # while (number > 15 | number < -1) {
-        # number <- rlaplace(1,m=4.06,s=2.31) #truncated laplace distribution 
-      # }
-      # temps[i] <- number
-    # }
-    # data$T_H <- temps
-    
     temps <- rep(NA, n_sim*n_unit)
     for (i in 1:(n_sim*n_unit)){
-    number <- rlaplace(1,m=4.06,s=2.31)
-    while (number > 4 | number < -1) {
-    number <- rlaplace(1,m=4.06,s=2.31)
-    }
-    temps[i] <- number
+      number <- rlaplace(1,m=4.06,s=2.31)
+      while (number > 15 | number < -1) {
+        number <- rlaplace(1,m=4.06,s=2.31) #truncated laplace distribution 
+      }
+      temps[i] <- number
     }
     data$T_H <- temps
     
+    # Temperature control < 4 dC 
+    # temps <- rep(NA, n_sim*n_unit)
+    # for (i in 1:(n_sim*n_unit)){
+    # number <- rlaplace(1,m=4.06,s=2.31)
+    # while (number > 4 | number < -1) {
+    # number <- rlaplace(1,m=4.06,s=2.31)
+    # }
+    # temps[i] <- number
+    # }
+    # data$T_H <- temps
+    
     ## (b) Define shelf-life day for all units
     ## Day 35
-    data$t_H = 35
+    data$t_H = 28
     
     # Generate spoilage frequency and assign spoilage types
     # PPC Spoilage %
     # Good Plant
-    data <- data %>%
-      group_by(lot_id) %>%
-      mutate (P_ppc = runif(1, 0.125, 0.313))
+    # data <- data %>%
+      # group_by(lot_id) %>%
+      # mutate (P_ppc = runif(1, 0.125, 0.294))
     
     # Medium Plant
     # data <- data %>%
       # group_by(lot_id) %>%
-      # mutate(P_ppc = runif(1, 0.367, 0.667))
+      # mutate(P_ppc = runif(1, 0.4, 0.625))
     
     # Bad Plant
-    # data <- data %>%
-      # group_by(lot_id) %>%
-      # mutate (P_ppc = runif(1, 0.75, 1))
+    data <- data %>%
+      group_by(lot_id) %>%
+      mutate (P_ppc = runif(1, 0.778, 1))
     
     # Sanity check 
     # data$P_ppc = 0
@@ -183,8 +237,20 @@
     
     # Assign initial contamination distributions
     # ppc
-    N0_ppc = rnorm(n = nrow(model_data_ppc), mean = 0.38, sd = 1.11)
-    model_data_ppc$N0_MPN_ppc <- 10^N0_ppc*1900
+    ppc_initial_mean <- sample(ppc_mean_distr, 100)
+    ppc_initial_sd <- sample(ppc_sd_distr, 100)
+    df1 <- data.frame(
+      lot_id = unique(model_data_ppc$lot_id),
+      initial_mean = rep(ppc_initial_mean, length.out = length(unique(model_data_ppc$lot_id))),
+      initial_sd = rep(ppc_initial_sd, length.out = length(unique(model_data_ppc$lot_id)))
+    )
+    model_data_ppc <- merge(model_data_ppc, df1, by = "lot_id")
+    model_data_ppc <- model_data_ppc %>%
+      rowwise() %>%
+      mutate(N0 = rnorm(n = 1, mean = initial_mean, sd = initial_sd))
+    
+    # filter partial cells
+    model_data_ppc$N0_MPN_ppc <- 10^model_data_ppc$N0*1900
     model_data_ppc_filtered <- subset(model_data_ppc, N0_MPN_ppc < 1)
     model_data_ppc_filtered$new_column <- runif(nrow(model_data_ppc_filtered))
     model_data_ppc_filtered$N0_MPN_ppc_assigned <- ifelse(model_data_ppc_filtered$N0_MPN_ppc > model_data_ppc_filtered$new_column, 1, 
@@ -198,8 +264,20 @@
     model_data_ppc <- as.data.frame(model_data_ppc)
     
     # spore 
-    N0_spore = rnorm(n = nrow(model_data_spore), mean = -0.72, sd = 0.99)
-    model_data_spore$N0_MPN_spore <- 10^N0_spore*1900
+    spore_initial_mean <- sample(spore_mean_distr, 100)
+    spore_initial_sd <- sample(spore_sd_distr, 100)
+    df2 <- data.frame(
+      lot_id = unique(model_data_spore$lot_id),
+      initial_mean = rep(spore_initial_mean, length.out = length(unique(model_data_spore$lot_id))),
+      initial_sd = rep(spore_initial_sd, length.out = length(unique(model_data_spore$lot_id)))
+    )
+    model_data_spore <- merge(model_data_spore, df2, by = "lot_id")
+    model_data_spore <- model_data_spore %>%
+      rowwise() %>%
+      mutate(N0 = rnorm(n = 1, mean = initial_mean, sd = initial_sd))
+    
+    # filter partial spores
+    model_data_spore$N0_MPN_spore <- 10^model_data_spore$N0*1900
     model_data_spore_filtered <- subset(model_data_spore, N0_MPN_spore < 1)
     model_data_spore_filtered$new_column <- runif(nrow(model_data_spore_filtered))
     model_data_spore_filtered$N0_MPN_spore_assigned <- ifelse(model_data_spore_filtered$N0_MPN_spore > model_data_spore_filtered$new_column, 1, 
@@ -284,7 +362,7 @@
                               model_data$T_H), ncol = 10)
     
     # Run simulation  
-    my_times <- seq(0, 35)
+    my_times <- seq(0, 28)
     num_iterations <- nrow(model_data)
     all_simulations <- list()
     for (i in 1:num_iterations) {
@@ -305,16 +383,22 @@
     final_conc <- do.call(rbind, all_simulations)
     
     # Generate output 
-    model_data_1 <- model_data[rep(1:nrow(model_data), each = 36), ]
+    model_data_1 <- model_data[rep(1:nrow(model_data), each = 29), ]
     # model_data_sub <- model_data_1[,c("lot_id","unit_id","N0","spoilage_type", "STorAT")]
     model_data_sub <- model_data_1[,c("lot_id","unit_id","spoilage_type", "t_F", "T_F", "t_T", "T_T", 
                                     "t_S", "T_S", "t_T2", "T_T2", "T_H")]
+    # model_data_sub <- model_data_sub <- model_data_1[,c("t_F", "T_F", "t_T", "T_T", "t_S", "T_S", 
+                                                        # "t_T2", "T_T2", "T_H", "P_ppc", "N0")]
     count_result <- final_conc[,c("time","N","logN")]
     df <- cbind(model_data_sub,count_result)
     
     # df_D7 = subset(df, time == "7")
     # df_D14 = subset(df, time == "14")
+    # df_D14 <- subset(df_D14, select = -c(time, N))
+    # df_D14$logN[df_D14$logN == -Inf] <- -2
     # df_D21 = subset(df, time == "21")
+    # df_D21 <- subset(df_D21, select = -c(time, N))
+    # df_D21$logN[df_D21$logN == -Inf] <- -2
     
     # microflora
     # Microflora <- sample(SPC_D1, 10000, replace = TRUE)
@@ -344,8 +428,8 @@
                 # log_meanN = log10(mean(N)))
     
     # Calculate the sum of logN over 6 logs for each lot_id
-    summary_stats_good <- list()
-    for (i in 1:35) {
+    summary_stats_bad <- list()
+    for (i in 1:28) {
       filtered_data <- subset(df, time == i)
       percent <- filtered_data %>%
         group_by(lot_id) %>%
@@ -355,13 +439,13 @@
       percent$perc_25 <- quantile(percent$percent, probs = 0.25)
       percent$perc_75 <- quantile(percent$percent, probs = 0.75)
       percent <- percent[c("mean_percent", "median_percent", "perc_25", "perc_75")][1,]
-      summary_stats_good[[i]] <- percent
+      summary_stats_bad[[i]] <- percent
     }
-    summary_stats_good <- do.call(rbind,summary_stats_good)
+    summary_stats_bad <- do.call(rbind,summary_stats_bad)
     
-write.csv(summary_stats_good, "summary_stats_good_below4.csv")
-write.csv(summary_stats_medium, "summary_stats_medium_below4.csv")
-write.csv(summary_stats_bad, "summary_stats_bad_below4.csv")
+write.csv(summary_stats_good, "summary_stats_good.csv")
+write.csv(summary_stats_medium, "summary_stats_medium.csv")
+write.csv(summary_stats_bad, "summary_stats_bad.csv")
 
 # plot 
 ggplot(spore_count_6dC, aes(x = logN, fill = factor(time))) +

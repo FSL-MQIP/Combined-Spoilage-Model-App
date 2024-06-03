@@ -5,11 +5,13 @@ library(ggplot2)
 test_data = read.csv("test_data_tier_plant.csv")
 train_data = read.csv("train_data_tier_plant.csv")
 combined_dataset = rbind(test_data,train_data)
-combined_dataset = rbind(test_data[,c(5,6,17)],train_data[,c(5,6,17)])
+combined_dataset$SampleID_real <- gsub("-\\d+", "", combined_dataset$SampleID_real)
+filtered_combined_data <- subset(combined_dataset, !(endsWith(SampleID_real, "5") | endsWith(SampleID_real, "6")))
+filtered_combined_data <- filtered_combined_data[,c(5,6,17)]
 
 # Not group by Tier 1, 2, 3
 # Group by plantID
-combined_dataset_grouped <- combined_dataset %>%
+combined_dataset_grouped <- filtered_combined_data %>%
   group_by(plantID, spoilagetype) %>%
   summarise(count = n()) %>%
   ungroup()

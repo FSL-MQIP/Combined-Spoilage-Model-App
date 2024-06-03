@@ -1,3 +1,5 @@
+library(dplyr)
+
 combined_data <- read.csv("combined_data.csv")
 combined_data$SampleID <- gsub("-\\d+", "", combined_data$SampleID)
 filtered_combined_data <- subset(combined_data, !(endsWith(SampleID, "5") | endsWith(SampleID, "6")))
@@ -22,7 +24,10 @@ SPC_D14 <- na.omit(SPC_D14)
 SPC_D21 <- log10(combined_data_Spore$SPC_D21)
 SPC_D21 <- na.omit(SPC_D21)
 
-hist(SPC_D7, main = "Histogram of SPC Count (VSL D7)", xlab = "log10CFU/mL", breaks = 25)
-hist(SPC_D14, main = "Histogram of SPC Count (VSL D14)", xlab = "log10CFU/mL", breaks = 25)
-hist(SPC_D21, main = "Histogram of SPC Count (VSL D21)", xlab = "log10CFU/mL", breaks = 25)
+hist(SPC_D7, main = "Histogram of SPC Count (VSL D7)", xlab = "log10CFU/mL", xlim = c(0,7), breaks = 25)
+hist(SPC_D14, main = "Histogram of SPC Count (VSL D14)", xlab = "log10CFU/mL", xlim = c(0,8), breaks = 25)
+hist(SPC_D21, main = "Histogram of SPC Count (VSL D21)", xlab = "log10CFU/mL", xlim = c(0,8), breaks = 25)
 
+hist(CVTA_D7, main = "Histogram of  CVTA Count (VSL D7)", xlab = "log10CFU/mL", xlim = c(-2,8), breaks = 20)
+hist(CVTA_D14, main = "Histogram of  CVTA Count (VSL D14)", xlab = "log10CFU/mL", breaks = 20)
+hist(CVTA_D21, main = "Histogram of  CVTA Count (VSL D21)", xlab = "log10CFU/mL", breaks = 20)
