@@ -1,0 +1,616 @@
+    # Set work directory 
+    setwd("C:/Users/sujun/Documents/GitHub/Combined-Spoilage-Model-App")
+    
+    # Load packages
+    library(tidyverse)
+    library(ggplot2)
+    library(gridExtra)
+    library(fitdistrplus)
+    library(tibble)
+    library(EnvStats)         # to load rtri function 
+    library(truncnorm)        # to load rtruncnorm function
+    library(jmuOutlier)       # to load rlaplace function
+    library(formula.tools)    # to load 'rhs'
+    library(purrr)            # to load 'map'
+    library(deSolve)          # to load 'ode'
+    library(rlang)
+    
+    # Load utility functions
+    source("UtilityFunctions_dynamic_growth.R")
+    
+    # Input data 
+    # Initial contamination levels
+    ppc_initial <- read.csv("InputData/ppc_initial.csv")
+    spore_initial <- read.csv("InputData/spore_initial.csv")
+    # Growth parameters
+    data_ppc <- read.csv("InputData/ppc_gp.csv")
+    data_ppc$mumax <- 0.684 * data_ppc$mumax
+    data_sporeformer <- read.csv("InputData/sporeformer_gp.csv")
+    # AT frequency
+    ppc_ST_freq <- read.csv("InputData/ppc_STfreq_clean.csv")
+    spore_AT_freq <- read.csv("InputData/spore_ATfreq_clean.csv")
+    
+    # Set seed
+    set.seed(1)
+    
+    # Generate input parameter distributions 
+    # Generate uncertainty distributions for initial contamination levels
+    # PPC initial contamination by bootstrapping 
+    means <- numeric(1000)
+    std_deviations <- numeric(1000)
+    
+    for (i in 1:1000) {
+      sample <- sample(ppc_initial$LOG.initial, size = nrow(ppc_initial), replace = TRUE)
+      sample_mean <- mean(sample)
+      sample_std <- sd(sample)
+      means[i] <- sample_mean
+      std_deviations[i] <- sample_std
+    }
+    
+    ppc_mean_nfit  <- fitdist(means, "norm")
+    ppc_sd_nfit  <- fitdist(std_deviations, "norm")
+    mean_ppc_mean <- ppc_mean_nfit$estimate[1]
+    sd_ppc_mean <- ppc_mean_nfit$estimate[2]
+    mean_ppc_sd <- ppc_sd_nfit$estimate[1]
+    sd_ppc_sd <- ppc_sd_nfit$estimate[2]
+    
+    # Generate normal distribution for ppc_mean 
+    ppc_mean_distr <- rnorm(1000, mean_ppc_mean, sd_ppc_mean)
+    # Generate normal distribution for ppc_sd
+    ppc_sd_distr <- rnorm(1000, mean_ppc_sd, sd_ppc_sd)
+    
+    # Sporeformer initial contamination by bootstrapping
+    means <- numeric(1000)
+    std_deviations <- numeric(1000)
+    
+    for (i in 1:1000) {
+      sample <- sample(spore_initial$log10MPN, size = nrow(spore_initial), replace = TRUE)
+      sample_mean <- mean(sample)
+      sample_std <- sd(sample)
+      means[i] <- sample_mean
+      std_deviations[i] <- sample_std
+    }
+    
+    spore_mean_nfit  <- fitdist(means, "norm")
+    spore_sd_nfit  <- fitdist(std_deviations, "norm")
+    mean_spore_mean <- spore_mean_nfit$estimate[1]
+    sd_spore_mean <- spore_mean_nfit$estimate[2]
+    mean_spore_sd <- spore_sd_nfit$estimate[1]
+    sd_spore_sd <- spore_sd_nfit$estimate[2]
+    
+    # Generate normal distribution for spore_mean 
+    spore_mean_distr <- rnorm(1000, mean_spore_mean, sd_spore_mean)
+    # Generate normal distribution for spore_sd
+    spore_sd_distr <- rnorm(1000, mean_spore_sd, sd_spore_sd)
+    
+    # Get mean and sd for PPC growth parameters h0, b, log10Nmax and Topt
+    data_ppc$h0 <- data_ppc$lag * data_ppc$mumax
+    Tmin_PPC <- -4.15
+    T_PPC <- 6
+    data_ppc$b <- sqrt(data_ppc$mumax/log(10)*24)/(T_PPC - Tmin_PPC) # mumax in log10/day
+    result_df <- data_ppc %>%
+      group_by(isolate) %>%
+      summarise(
+        Mean_h0 = mean(h0),
+        StdDev_h0 = sd(h0),
+        Mean_b = mean(b),
+        StdDev_b = sd(b),
+        Mean_LOG10Nmax = mean(LOG10Nmax),
+        StdDev_LOG10Nmax = sd(LOG10Nmax),
+        Topt = Topt
+      ) %>%
+      distinct()
+    result_df <- as.data.frame(result_df)
+    result_df$STorAT <- unique(data_ppc$STorAT)
+    result_df$STorAT <- paste0("ST_", result_df$STorAT)
+    
+    # Get mean and sd for sporeformer growth parameters h0, b, log10Nmax and Topt
+    data_sporeformer$h0 <- data_sporeformer$lag * data_sporeformer$mumax
+    Tmin_spore <- -3.62
+    T_spore <- 6
+    data_sporeformer$b <- sqrt(data_sporeformer$mumax/log(10))/(T_spore - Tmin_spore) # mumax in log10/day
+    result_df_1 <- data_sporeformer %>%
+      group_by(isolate) %>%
+      summarise(
+        Mean_h0 = h0,
+        StdDev_h0 = mean(result_df$StdDev_h0),
+        Mean_b = b,
+        StdDev_b = mean(result_df$StdDev_b),
+        Mean_LOG10Nmax = LOG10Nmax,
+        StdDev_LOG10Nmax = mean(result_df$StdDev_LOG10Nmax),
+        Topt = Topt
+      ) %>%
+      distinct()
+    result_df_1 <- as.data.frame(result_df_1)
+    result_df_1$STorAT <- unique(data_sporeformer$STorAT)
+    result_df_1$STorAT <- paste0("AT_", result_df_1$STorAT)
+    
+    # Join growth parameter data 
+    growth_parameter <- rbind(result_df,result_df_1)
+    
+    # Set up dataframe for simulation (100 lots, 100 units)
+    n_sim <- 100
+    n_unit <- 100
+    lot_id <- rep(seq(1, n_sim), each = n_unit)
+    unit_id <- rep(seq(1,n_unit), times = n_sim)
+    data <- data.frame(lot_id, unit_id)
+    
+    # Temperature profile
+    # Stage 1: facility storage 
+    ## (a)  Sample the temperature distribution
+    data$T_F <- rep(runif(n_sim*n_unit,min=3.5,max=4.5)) #uniform distribution
+    ## (b) Sample the storage time (in days) distribution
+    data$t_F <- rep(runif(n_sim*n_unit,min=1,max=2)) #uniform distribution
+    
+    # Stage 2: transport from facility to retail store
+    ## (a)  Sample the temperature distribution
+    data$T_T <- rep(rtri(n_sim*n_unit,min=1.7,max=10.0,mode=4.4)) #triangular distribution
+    
+    # scenario 5) and 6) transportation temperature between facility and retail <= 7C or 5C
+    temps <- rep(NA, n_sim*n_unit)
+    for (i in 1:(n_sim*n_unit)){
+    number <- rtri(1,min=1.7,max=10.0,mode=4.4)
+    while (number > 5) {
+    number <- rlaplace(1,min=1.7,max=10.0,mode=4.4)
+    }
+    temps[i] <- number
+    }
+    data$T_H <- temps
+    
+    ## (b) Sample the transportation time (in days) distribution
+    data$t_T <- rep(rtri(n_sim*n_unit,min=1,max=10,mode=5))
+    
+    # Stage 3: storage/display at retail store
+    ## (a)  Sample the temperature distribution
+    data$T_S <- rep(rtruncnorm(n_sim*n_unit,a=-1.4,b=5.4,mean=2.3,sd=1.8)) #truncated normal distribution
+    ## (b) Sample the storage time (in days) distribution
+    data$t_S <- rep(rtruncnorm(n_sim*n_unit,a=0.042,b=10.0, mean=1.821,sd=3.3)) #truncated normal distribution
+    
+    ## Stage 4: transportation from retail store to home
+    ## (a)  Sample the temperature distribution
+    data$T_T2 <- rep(rtruncnorm(n_sim*n_unit,a=0,b=10,mean=8.5,sd=1.0)) #truncated normal distribution
+    ## (b) Sample the transportation time (in days) distribution 
+    data$t_T2 <- rep(rtruncnorm(n_sim*n_unit,a=0.01,b=0.24, mean=0.04,sd=0.02)) #truncated normal distribution
+    
+    ## Stage 5: home storage 
+    ## (a)  Sample the temperature distribution
+    temps <- rep(NA, n_sim*n_unit)
+    for (i in 1:(n_sim*n_unit)){
+      number <- rlaplace(1,m=4.06,s=2.31)
+      while (number > 15 | number < -1) {
+        number <- rlaplace(1,m=4.06,s=2.31) #truncated laplace distribution 
+      }
+      temps[i] <- number
+    }
+    data$T_H <- temps
+    
+    # scenario 4) consumer home temperature <= 4C 
+    # temps <- rep(NA, n_sim*n_unit)
+    # for (i in 1:(n_sim*n_unit)){
+    # number <- rlaplace(1,m=4.06,s=2.31)
+    # while (number > 4 | number < -1) {
+    # number <- rlaplace(1,m=4.06,s=2.31)
+    # }
+    # temps[i] <- number
+    # }
+    # data$T_H <- temps
+    
+    ## (b) Define shelf-life day for all units
+    ## Day 35
+    data$t_H = 28
+    
+    # Generate spoilage frequency and assign spoilage types
+    # PPC Spoilage %
+    # Good Plant
+    # data <- data %>%
+      # group_by(lot_id) %>%
+      # mutate (P_ppc = runif(1, 0.125, 0.294))
+    
+    # Medium Plant
+    # data <- data %>%
+      # group_by(lot_id) %>%
+      # mutate(P_ppc = runif(1, 0.4, 0.625))
+    
+    # Bad Plant
+    data <- data %>%
+      group_by(lot_id) %>%
+      mutate (P_ppc = runif(1, 0.778, 1))
+    
+    # Sanity check 
+    # data$P_ppc = 0
+    
+    # Assign spoilage type
+    result_list <- list()
+    for (i in 1:n_sim) {
+      data_lot <- subset(data, lot_id == as.character(i))
+      num_ppc <- round(unique(data_lot$P_ppc) * n_unit)
+      num_spore_unspoil <- n_unit - num_ppc
+      spoiler_types <- c(rep("PPC", num_ppc), rep("Spore_Unspoil", num_spore_unspoil))
+      data_lot$spoilage_type <- sample(spoiler_types, n_unit)
+      result_list[[i]] <- data_lot
+    }
+    data <- do.call(rbind,result_list)
+    
+    # Assign AT/ST types 
+    # ppc
+    model_data_ppc <- subset(data, spoilage_type == "PPC")
+    model_data_ppc$STorAT <- NA
+    for (i in 1:nrow(model_data_ppc)) {
+      sampled_value <- sample(ppc_ST_freq$ClosestST, 1, replace = T)
+      while (sampled_value == "9_23") {
+        sampled_value <- sample(ppc_ST_freq$ClosestST, 1, replace = T)
+      }
+      model_data_ppc$STorAT[i] <- sampled_value
+    }
+    model_data_ppc$STorAT <- paste0("ST_", model_data_ppc$STorAT)
+    # # spore
+    model_data_spore <- subset(data, spoilage_type == "Spore_Unspoil")
+    model_data_spore$STorAT <- sample(spore_AT_freq$ClosestAT, nrow(model_data_spore),replace=T)
+    model_data_spore$STorAT <- paste0("AT_", model_data_spore$STorAT)
+    
+    # Assign initial contamination distributions
+    # ppc
+    ppc_initial_mean <- sample(ppc_mean_distr, 100)
+    ppc_initial_sd <- sample(ppc_sd_distr, 100)
+    df1 <- data.frame(
+      lot_id = unique(model_data_ppc$lot_id),
+      initial_mean = rep(ppc_initial_mean, length.out = length(unique(model_data_ppc$lot_id))),
+      initial_sd = rep(ppc_initial_sd, length.out = length(unique(model_data_ppc$lot_id)))
+    )
+    model_data_ppc <- merge(model_data_ppc, df1, by = "lot_id")
+    model_data_ppc <- model_data_ppc %>%
+      rowwise() %>%
+      mutate(N0 = rnorm(n = 1, mean = initial_mean, sd = initial_sd))
+    
+    # scenario 3) reduce initial ppc by 1-3 log
+    # log_reduction_ppc = rep(runif(n_sim,min=1,max=3))
+    # log_reduction_ppc = data.frame(lot_id = c(1:100), log_reduction = log_reduction_ppc)
+    # model_data_ppc <- model_data_ppc %>%
+      # left_join(log_reduction_ppc, by = "lot_id")
+    # model_data_ppc$N0 = model_data_ppc$N0 - model_data_ppc$log_reduction
+    # model_data_ppc <- subset(model_data_ppc, select = -log_reduction)
+    
+    # filter partial cells
+    model_data_ppc$N0_MPN_ppc <- 10^model_data_ppc$N0*1900
+    model_data_ppc_filtered <- subset(model_data_ppc, N0_MPN_ppc < 1)
+    model_data_ppc_filtered$new_column <- runif(nrow(model_data_ppc_filtered))
+    model_data_ppc_filtered$N0_MPN_ppc_assigned <- ifelse(model_data_ppc_filtered$N0_MPN_ppc > model_data_ppc_filtered$new_column, 1, 
+                                                   ifelse(model_data_ppc_filtered$N0_MPN_ppc < model_data_ppc_filtered$new_column, 0, NA))
+    model_data_ppc_filtered <- model_data_ppc_filtered[, !(names(model_data_ppc_filtered) %in% c("N0_MPN_ppc", "new_column"))]
+    names(model_data_ppc_filtered)[names(model_data_ppc_filtered) == "N0_MPN_ppc_assigned"] <- "N0_MPN_ppc"
+    filtered_rows <- anti_join(model_data_ppc, model_data_ppc_filtered, by = c("lot_id", "unit_id"))
+    model_data_ppc <- rbind(filtered_rows,model_data_ppc_filtered)
+    model_data_ppc$N0 = model_data_ppc$N0_MPN_ppc/1900
+    model_data_ppc <- subset(model_data_ppc, select = -N0_MPN_ppc)
+    model_data_ppc <- as.data.frame(model_data_ppc)
+    
+    # spore 
+    spore_initial_mean <- sample(spore_mean_distr, 100)
+    spore_initial_sd <- sample(spore_sd_distr, 100)
+    df2 <- data.frame(
+      lot_id = unique(model_data_spore$lot_id),
+      initial_mean = rep(spore_initial_mean, length.out = length(unique(model_data_spore$lot_id))),
+      initial_sd = rep(spore_initial_sd, length.out = length(unique(model_data_spore$lot_id)))
+    )
+    model_data_spore <- merge(model_data_spore, df2, by = "lot_id")
+    model_data_spore <- model_data_spore %>%
+      rowwise() %>%
+      mutate(N0 = rnorm(n = 1, mean = initial_mean, sd = initial_sd))
+    
+    # scenario 1) and 2) reduce initial spore by 0.6-3.1 log or 1.23-1.64 log
+    # log_reduction_spore = rep(runif(n_sim,min=1.23,max=1.64))
+    # log_reduction_spore = data.frame(lot_id = c(1:100), log_reduction = log_reduction_spore)
+    # model_data_spore <- model_data_spore %>%
+    # left_join(log_reduction_spore, by = "lot_id")
+    # model_data_spore$N0 = model_data_spore$N0 - model_data_spore$log_reduction
+    # model_data_spore <- subset(model_data_spore, select = -log_reduction)
+    
+    # filter partial spores
+    model_data_spore$N0_MPN_spore <- 10^model_data_spore$N0*1900
+    model_data_spore_filtered <- subset(model_data_spore, N0_MPN_spore < 1)
+    model_data_spore_filtered$new_column <- runif(nrow(model_data_spore_filtered))
+    model_data_spore_filtered$N0_MPN_spore_assigned <- ifelse(model_data_spore_filtered$N0_MPN_spore > model_data_spore_filtered$new_column, 1, 
+                                                       ifelse(model_data_spore_filtered$N0_MPN_spore < model_data_spore_filtered$new_column, 0, NA))
+    model_data_spore_filtered <- model_data_spore_filtered[, !(names(model_data_spore_filtered) %in% c("N0_MPN_spore", "new_column"))]
+    names(model_data_spore_filtered)[names(model_data_spore_filtered) == "N0_MPN_spore_assigned"] <- "N0_MPN_spore"
+    filtered_rows <- anti_join(model_data_spore, model_data_spore_filtered, by = c("lot_id", "unit_id"))
+    model_data_spore <- rbind(filtered_rows,model_data_spore_filtered)
+    model_data_spore$N0 = model_data_spore$N0_MPN_spore/1900
+    model_data_spore <- subset(model_data_spore, select = -N0_MPN_spore)
+    model_data_spore <- as.data.frame(model_data_spore)
+    
+    # join data
+    model_data <- rbind(model_data_ppc,model_data_spore)
+    
+    # Generate allele index
+    model_data$allele_index <- match(model_data$STorAT, growth_parameter$STorAT)
+    
+    # Assign growth parameters 
+    model_data$Mean_h0 <- growth_parameter$Mean_h0[model_data$allele_index]
+    model_data$StdDev_h0 <- growth_parameter$StdDev_h0[model_data$allele_index]
+    model_data$Mean_b <- growth_parameter$Mean_b[model_data$allele_index]
+    model_data$StdDev_b <- growth_parameter$StdDev_b[model_data$allele_index]
+    model_data$Mean_Nmax <- growth_parameter$Mean_LOG10Nmax[model_data$allele_index]
+    model_data$StdDev_Nmax <- growth_parameter$StdDev_LOG10Nmax[model_data$allele_index]
+    model_data$Topt <- growth_parameter$Topt[model_data$allele_index]
+    
+    model_data <- model_data %>%
+      rowwise() %>%
+      mutate(h0 = rtruncnorm(n = 1,
+                             a = 0,
+                             mean = Mean_h0, 
+                             sd = StdDev_h0))
+    
+    model_data$Q0 <- 1/(exp(model_data$h0)-1)
+    
+    model_data <- model_data %>%
+      rowwise() %>%
+      mutate(b = rtruncnorm(n = 1,
+                            a = 0,
+                            mean = Mean_b, 
+                            sd = StdDev_b))
+    
+    model_data <- model_data %>%
+      rowwise() %>%
+      mutate(Nmax = rnorm(n = 1,
+                          mean = Mean_Nmax, 
+                          sd = StdDev_Nmax))
+    model_data$Nmax <- 10^(model_data$Nmax)
+    
+    model_data <- model_data %>%
+      mutate(Tmin = case_when(
+        spoilage_type == "PPC" ~ -4.15,
+        spoilage_type == "Spore_Unspoil" ~ -3.62
+      ))
+    
+    model_data$mu_opt <- (model_data$b*(model_data$Topt-model_data$Tmin))^2 
+    
+    model_data <- as.data.frame(model_data)
+    
+    # Model temperature profiles of 10000 units HTST milk
+    env_cond_time <- matrix(c(rep(0,10000),
+                              model_data$t_F, 
+                              model_data$t_F+0.00001,
+                              model_data$t_F + model_data$t_T,
+                              model_data$t_F + model_data$t_T+0.00001,
+                              model_data$t_F + model_data$t_T + model_data$t_S,
+                              model_data$t_F + model_data$t_T + model_data$t_S+0.00001,
+                              model_data$t_F + model_data$t_T + model_data$t_S + model_data$t_T2,
+                              model_data$t_F + model_data$t_T + model_data$t_S + model_data$t_T2+0.00001,
+                              model_data$t_F + model_data$t_T + model_data$t_S + model_data$t_T2 + model_data$t_H), ncol = 10)
+    
+    env_cond_temp <- matrix(c(model_data$T_F,
+                              model_data$T_F,
+                              model_data$T_T,
+                              model_data$T_T,
+                              model_data$T_S,
+                              model_data$T_S,
+                              model_data$T_T2,
+                              model_data$T_T2,
+                              model_data$T_H,
+                              model_data$T_H), ncol = 10)
+    
+    # Run simulation  
+    my_times <- seq(0, 28)
+    num_iterations <- nrow(model_data)
+    all_simulations <- list()
+    for (i in 1:num_iterations) {
+      my_primary <- list(mu_opt = model_data$mu_opt[i], Nmax = model_data$Nmax[i], N0 = model_data$N0[i], Q0 = model_data$Q0[i])
+      sec_temperature <- list(model = "reducedRatkowsky", xmin = model_data$Tmin[i], b = model_data$b[i], xopt = model_data$Topt[i])
+      my_secondary <- list(temperature = sec_temperature)
+      growth <- predict_dynamic_growth(times = my_times,
+                                       env_conditions = tibble(time = env_cond_time[i,],
+                                                               temperature = env_cond_temp[i,]),
+                                       # env_conditions = tibble(time = my_times,
+                                                               # temperature = 6),
+                                       my_primary,
+                                       my_secondary)
+      sim <- growth$simulation
+      all_simulations[[i]] <- sim
+     }
+    
+    final_conc <- do.call(rbind, all_simulations)
+    
+    # Generate output 
+    model_data_1 <- model_data[rep(1:nrow(model_data), each = 29), ]
+    model_data_sub <- model_data_1[,c("lot_id","unit_id","N0","spoilage_type", "STorAT")]
+    # model_data_sub <- model_data_1[,c("lot_id","unit_id","spoilage_type", "t_F", "T_F", "t_T", "T_T", 
+                                    # "t_S", "T_S", "t_T2", "T_T2", "T_H")]
+    # model_data_sub <- model_data_sub <- model_data_1[,c("t_F", "T_F", "t_T", "T_T", "t_S", "T_S", 
+                                                        # "t_T2", "T_T2", "T_H", "P_ppc", "N0")]
+    count_result <- final_conc[,c("time","N","logN")]
+    df <- cbind(model_data_sub,count_result)
+    df$logN[df$logN == -Inf] <- -2
+    
+    # Base model output (cumulative distribution)
+    percentiles_Good <- df_D21_Good %>%
+      group_by(lot_id) %>%
+      summarize(
+        p0 = quantile(logN, 0),
+        p10 = quantile(logN, 0.10),
+        p20 = quantile(logN, 0.20),
+        p30 = quantile(logN, 0.30),
+        p40 = quantile(logN, 0.40),
+        p50 = quantile(logN, 0.50),
+        p60 = quantile(logN, 0.60),
+        p70 = quantile(logN, 0.70),
+        p80 = quantile(logN, 0.80),
+        p90 = quantile(logN, 0.90),
+        p100 = quantile(logN, 1)
+      )
+    
+    means_Bad <- df_D21_Bad %>%
+      group_by(lot_id) %>%
+      summarize(
+        means = mean(logN)
+      )
+    
+    medians_Bad <- apply(percentiles_Bad[-1], 2, median)
+    percentile_2.5_Bad <- apply(percentiles_Bad[-1], 2, function(x) quantile(x, 0.025))
+    percentile_97.5_Bad <- apply(percentiles_Bad[-1], 2, function(x) quantile(x, 0.975))
+    result_Bad = rbind(medians_Bad, percentile_2.5_Bad, percentile_97.5_Bad)
+    quantiles = c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)
+    result_Bad = rbind(quantiles,result_Bad)
+    rownames(result_Bad) = c("quantiles","medians","percentile_2.5","percentile_97.5")
+    result_Bad = t(result_Bad)
+    result_Bad = as.data.frame(result_Bad)
+    
+    par(mfrow = c(1, 3))
+    plot(result_Bad$quantiles ~ result_Bad$medians, type = "l", 
+         col = "black", xlab = expression("log"[10]*"CFU/mL at shelf-life day 21"), ylab = "Percentiles", main = "Bad Plant")
+    lines(result_Bad$quantiles ~ result_Bad$percentile_2.5, type = "l", col = "black", lty = 2)
+    lines(result_Bad$quantiles ~ result_Bad$percentile_97.5, type = "l", col = "black", lty = 2)
+    
+    # Base model output (percent > 6 log over shelf-life)
+    # Calculate the sum of logN over 6 logs for each lot_id
+    summary_stats_bad_sc6 <- list()
+    for (i in 1:28) {
+      filtered_data <- subset(df, time == i)
+      percent <- filtered_data %>%
+        group_by(lot_id) %>%
+        summarise(percent = sum(logN > 6))
+      percent$mean_percent <- mean(percent$percent)
+      percent$median_percent <- median(percent$percent)
+      percent$perc_2.5 <- quantile(percent$percent, probs = 0.025)
+      percent$perc_97.5 <- quantile(percent$percent, probs = 0.975)
+      percent <- percent[c("mean_percent", "median_percent", "perc_2.5", "perc_97.5")][1,]
+      summary_stats_bad_sc6[[i]] <- percent
+    }
+    summary_stats_bad_sc6 <- do.call(rbind,summary_stats_bad_sc6)
+    
+    # Plot percent > 6 log over shelf-life
+    par(mfrow = c(1, 3))
+    shelflife_days = c(1:28)
+    plot(summary_stats_bad$median_percent ~ shelflife_days, type = "l", 
+         col = "black", xlab = "Shelf-life days", ylab = "Percent milk containers over 6 log", 
+         ylim = c(0,85), main = "Bad Plant")
+    lines(summary_stats_bad$perc_2.5 ~ shelflife_days, type = "l", col = "black", lty = 2)
+    lines(summary_stats_bad$perc_97.5 ~ shelflife_days, type = "l", col = "black", lty = 2)
+    abline(h = 25, col = "red")
+    
+    # Validation 
+    # microflora
+    Microflora <- sample(SPC_D1, 10000, replace = TRUE)
+    
+    Spore_D7 =  df_D7$N 
+    SPC_D7_sim = log10(Spore_D7 + Microflora)
+    # CVTA_D7_sim = df_D7$logN
+    
+    Spore_D14 = df_D14$N
+    SPC_D14_sim = log10(Spore_D14 + Microflora)
+    # CVTA_D14_sim = df_D14$logN
+    
+    Spore_D21 = df_D21$N
+    SPC_D21_sim = log10(Spore_D21 + Microflora)
+    # CVTA_D21_sim = df_D21$logN
+    
+    # Calculate the mean and median conc. for each day 
+    # result_bad <- df %>%
+      # group_by(time) %>%
+      # summarize(mean_logN = mean(logN),
+                # median_logN = median(logN),
+                # meanN = mean(N),
+                # log_meanN = log10(mean(N)))
+
+# Density plot for validation result 
+PPC_D7 <- data.frame(
+  value = c(CVTA_D7, CVTA_D7_sim),
+  group = factor(rep(c("Observed","Simulated"), times = c(length(CVTA_D7),length(CVTA_D7_sim))))
+)
+
+PPC_D14 <- data.frame(
+  value = c(CVTA_D14, CVTA_D14_sim),
+  group = factor(rep(c("Observed","Simulated"), times = c(length(CVTA_D14),length(CVTA_D14_sim))))
+)
+
+PPC_D21 <- data.frame(
+  value = c(CVTA_D21, CVTA_D21_sim),
+  group = factor(rep(c("Observed","Simulated"), times = c(length(CVTA_D21),length(CVTA_D21_sim))))
+)
+
+SPC_D7 <- data.frame(
+  value = c(SPC_D7, SPC_D7_sim),
+  group = factor(rep(c("Observed","Simulated"), times = c(length(SPC_D7),length(SPC_D7_sim))))
+)
+
+SPC_D14 <- data.frame(
+  value = c(SPC_D14, SPC_D14_sim),
+  group = factor(rep(c("Observed","Simulated"), times = c(length(SPC_D14),length(SPC_D14_sim))))
+)
+
+SPC_D21 <- data.frame(
+  value = c(SPC_D21, SPC_D21_sim),
+  group = factor(rep(c("Observed","Simulated"), times = c(length(SPC_D21),length(SPC_D21_sim))))
+)
+
+plot_PPC_D7 = ggplot(PPC_D7, aes(x = value, fill = group)) +
+  geom_density(aes(linetype = group), alpha = 0) +
+  scale_linetype_manual(values = c("solid", "dashed")) +
+  labs(title = "Density Plot of PPC Bacterial Count (Day 7)", 
+       x = substitute(log[10]*"CFU/mL"), 
+       y = "Density") +
+  scale_x_continuous(limits = c(0, 10)) +
+  scale_y_continuous(limits = c(0, 2)) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+plot_PPC_D14 = ggplot(PPC_D14, aes(x = value, fill = group)) +
+  geom_density(aes(linetype = group), alpha = 0) +
+  scale_linetype_manual(values = c("solid", "dashed")) +
+  labs(title = "Density Plot of PPC Bacterial Count (Day 14)", 
+       x = substitute(log[10]*"CFU/mL"), 
+       y = "Density") +
+  scale_x_continuous(limits = c(0, 10)) +
+  scale_y_continuous(limits = c(0, 2)) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+plot_PPC_D21 = ggplot(PPC_D21, aes(x = value, fill = group)) +
+  geom_density(aes(linetype = group), alpha = 0) +
+  labs(title = "Density Plot of PPC Bacterial Count (Day 21)", 
+       x = substitute(log[10]*"CFU/mL"), 
+       y = "Density") +
+  scale_x_continuous(limits = c(0, 10)) +
+  scale_y_continuous(limits = c(0, 2)) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+plot_Spore_D7 = ggplot(SPC_D7, aes(x = value, fill = group)) +
+  geom_density(aes(linetype = group), alpha = 0) +
+  labs(title = "Density Plot of Spore-forming Bacterial Count (Day 7)", 
+       x = substitute(log[10]*"CFU/mL"), 
+       y = "Density") +
+  scale_x_continuous(limits = c(0, 8)) +
+  scale_y_continuous(limits = c(0, 0.5)) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+plot_Spore_D14 = ggplot(SPC_D14, aes(x = value, fill = group)) +
+  geom_density(aes(linetype = group), alpha = 0) +
+  labs(title = "Density Plot of Spore-forming Bacterial Count (Day 14)", 
+       x = substitute(log[10]*"CFU/mL"), 
+       y = "Density") +
+  scale_x_continuous(limits = c(0, 8)) +
+  scale_y_continuous(limits = c(0, 0.5)) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+plot_Spore_D21 = ggplot(SPC_D21, aes(x = value, fill = group)) +
+  geom_density(aes(linetype = group), alpha = 0) +
+  labs(title = "Density Plot of Spore-forming Bacterial Count (Day 21)", 
+       x = substitute(log[10]*"CFU/mL"), 
+       y = "Density") +
+  scale_x_continuous(limits = c(0, 8)) +
+  scale_y_continuous(limits = c(0, 0.5)) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+grid.arrange(plot_PPC_D7, plot_PPC_D14, plot_PPC_D21, 
+             plot_Spore_D7, plot_Spore_D14, plot_Spore_D21, 
+             ncol = 3)
