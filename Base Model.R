@@ -144,18 +144,18 @@
     
     # Stage 2: transport from facility to retail store
     ## (a)  Sample the temperature distribution
-    data$T_T <- rep(rtri(n_sim*n_unit,min=1.7,max=10.0,mode=4.4)) #triangular distribution
+    # data$T_T <- rep(rtri(n_sim*n_unit,min=1.7,max=10.0,mode=4.4)) #triangular distribution
     
     # scenario 5) and 6) transportation temperature between facility and retail <= 7C or 5C
     temps <- rep(NA, n_sim*n_unit)
     for (i in 1:(n_sim*n_unit)){
     number <- rtri(1,min=1.7,max=10.0,mode=4.4)
     while (number > 5) {
-    number <- rlaplace(1,min=1.7,max=10.0,mode=4.4)
+    number <- rtri(1,min=1.7,max=10.0,mode=4.4)
     }
     temps[i] <- number
     }
-    data$T_H <- temps
+    data$T_T <- temps
     
     ## (b) Sample the transportation time (in days) distribution
     data$t_T <- rep(rtri(n_sim*n_unit,min=1,max=10,mode=5))
@@ -423,7 +423,7 @@
     df$logN[df$logN == -Inf] <- -2
     
     # Base model output (cumulative distribution)
-    percentiles_Good <- df_D21_Good %>%
+    percentiles_Bad <- df_D21_Bad %>%
       group_by(lot_id) %>%
       summarize(
         p0 = quantile(logN, 0),
@@ -436,6 +436,7 @@
         p70 = quantile(logN, 0.70),
         p80 = quantile(logN, 0.80),
         p90 = quantile(logN, 0.90),
+        p95 = quantile(logN, 0.95),
         p100 = quantile(logN, 1)
       )
     
@@ -447,19 +448,38 @@
     
     medians_Bad <- apply(percentiles_Bad[-1], 2, median)
     percentile_2.5_Bad <- apply(percentiles_Bad[-1], 2, function(x) quantile(x, 0.025))
+    percentile_95_Bad <- apply(percentiles_Bad[-1], 2, function(x) quantile(x, 0.95))
     percentile_97.5_Bad <- apply(percentiles_Bad[-1], 2, function(x) quantile(x, 0.975))
-    result_Bad = rbind(medians_Bad, percentile_2.5_Bad, percentile_97.5_Bad)
-    quantiles = c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)
+    result_Bad = rbind(medians_Bad, percentile_2.5_Bad, percentile_95_Bad, percentile_97.5_Bad)
+    quantiles = c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95, 1)
     result_Bad = rbind(quantiles,result_Bad)
-    rownames(result_Bad) = c("quantiles","medians","percentile_2.5","percentile_97.5")
+    rownames(result_Bad) = c("quantiles","medians","percentile_2.5","percentile_95", "percentile_97.5")
     result_Bad = t(result_Bad)
     result_Bad = as.data.frame(result_Bad)
+    
+    # Variability ratio 
+    VR_Bad = result_Bad[11,2]/result_Bad[6,2]
+    # Uncertainty ratio 
+    UR_Bad = result_Bad[6,4]/result_Bad[6,2]
+    # Overall Uncertainty Ratio 
+    OUR_Bad = result_Bad[11,4]/result_Bad[6,2]
     
     par(mfrow = c(1, 3))
     plot(result_Bad$quantiles ~ result_Bad$medians, type = "l", 
          col = "black", xlab = expression("log"[10]*"CFU/mL at shelf-life day 21"), ylab = "Percentiles", main = "Bad Plant")
-    lines(result_Bad$quantiles ~ result_Bad$percentile_2.5, type = "l", col = "black", lty = 2)
-    lines(result_Bad$quantiles ~ result_Bad$percentile_97.5, type = "l", col = "black", lty = 2)
+    polygon(c(result_Bad$percentile_2.5, rev(result_Bad$percentile_97.5)),
+            c(result_Bad$quantiles, rev(result_Bad$quantiles)),
+            col = "grey", border = NA)
+    lines(result_Bad$quantiles ~ result_Bad$medians, type = "l", col = "black")
+    lines(result_Bad$quantiles ~ result_Bad$percentile_95, type = "l", col = "black", lty = 2)
+    points(result_Bad[6,2], 0.5, col = "black", pch = 16)
+    text(result_Bad[6,2], 0.5, labels = "A", pos = 3, cex = 0.8, col = "black")
+    points(result_Bad[11,2], 0.95, col = "black", pch = 16)
+    text(result_Bad[11,2], 0.95, labels = "B", pos = 3, cex = 0.8, col = "black")
+    points(result_Bad[6,4], 0.5, col = "black", pch = 16)
+    text(result_Bad[6,4], 0.5, labels = "C", pos = 3, cex = 0.8, col = "black")
+    points(result_Bad[11,4], 0.95, col = "black", pch = 16)
+    text(8.8, 0.9, labels = "D", pos = 3, cex = 0.8, col = "black")
     
     # Base model output (percent > 6 log over shelf-life)
     # Calculate the sum of logN over 6 logs for each lot_id
@@ -471,9 +491,9 @@
         summarise(percent = sum(logN > 6))
       percent$mean_percent <- mean(percent$percent)
       percent$median_percent <- median(percent$percent)
-      percent$perc_2.5 <- quantile(percent$percent, probs = 0.025)
-      percent$perc_97.5 <- quantile(percent$percent, probs = 0.975)
-      percent <- percent[c("mean_percent", "median_percent", "perc_2.5", "perc_97.5")][1,]
+      percent$perc_5 <- quantile(percent$percent, probs = 0.05)
+      percent$perc_95 <- quantile(percent$percent, probs = 0.95)
+      percent <- percent[c("mean_percent", "median_percent", "perc_5","perc_95")][1,]
       summary_stats_bad_sc6[[i]] <- percent
     }
     summary_stats_bad_sc6 <- do.call(rbind,summary_stats_bad_sc6)
@@ -483,9 +503,11 @@
     shelflife_days = c(1:28)
     plot(summary_stats_bad$median_percent ~ shelflife_days, type = "l", 
          col = "black", xlab = "Shelf-life days", ylab = "Percent milk containers over 6 log", 
-         ylim = c(0,85), main = "Bad Plant")
-    lines(summary_stats_bad$perc_2.5 ~ shelflife_days, type = "l", col = "black", lty = 2)
-    lines(summary_stats_bad$perc_97.5 ~ shelflife_days, type = "l", col = "black", lty = 2)
+         ylim = c(0,85), main = "Short Shelf-life Milk Plant")
+    lines(summary_stats_bad$perc_5 ~ shelflife_days, type = "l", col = "black", lty = 4)
+    lines(summary_stats_bad$perc_95 ~ shelflife_days, type = "l", col = "black", lty = 2)
+    legend(x = 0.1, y = 90, legend = c("Median", "5th Percentile", "95th Percentile"), 
+           col = "black", lty = c(1, 4, 2), bty = "n")
     abline(h = 25, col = "red")
     
     # Validation 

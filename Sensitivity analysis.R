@@ -51,7 +51,7 @@ SA_result_Bad_Plant_D21_filtered$var = c("Initial contamination level",
 
 plot_Bad = ggplot(SA_result_Bad_Plant_D21_filtered, aes(x = est, y = reorder(var, abs_prcc))) +
   geom_bar(stat = "identity", fill = "grey") +
-  labs(x = "Partial Rank Correlation Coefficient", y = "Parameters", title = "Bad Plant") +
+  labs(x = "Partial Rank Correlation Coefficient", y = "Parameters", title = "Short Shelf-life Milk Plant") +
   theme_minimal() + 
   xlim(-0.1,0.6)
 
