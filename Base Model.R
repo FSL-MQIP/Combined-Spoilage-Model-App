@@ -144,18 +144,7 @@
     
     # Stage 2: transport from facility to retail store
     ## (a)  Sample the temperature distribution
-    # data$T_T <- rep(rtri(n_sim*n_unit,min=1.7,max=10.0,mode=4.4)) #triangular distribution
-    
-    # scenario 5) and 6) transportation temperature between facility and retail <= 7C or 5C
-    temps <- rep(NA, n_sim*n_unit)
-    for (i in 1:(n_sim*n_unit)){
-    number <- rtri(1,min=1.7,max=10.0,mode=4.4)
-    while (number > 5) {
-    number <- rtri(1,min=1.7,max=10.0,mode=4.4)
-    }
-    temps[i] <- number
-    }
-    data$T_T <- temps
+    data$T_T <- rep(rtri(n_sim*n_unit,min=1.7,max=10.0,mode=4.4)) #triangular distribution
     
     ## (b) Sample the transportation time (in days) distribution
     data$t_T <- rep(rtri(n_sim*n_unit,min=1,max=10,mode=5))
@@ -198,6 +187,9 @@
     ## (b) Define shelf-life day for all units
     ## Day 35
     data$t_H = 28
+    
+    # scenario 5) and 6) transportation temperature between facility and retail <= 7C or 5C (run this the last)
+    data$T_T <- ifelse(data$T_T > 5, rtri(1, min = 1.7, max = 10.0, mode = 4.4), data$T_T)
     
     # Generate spoilage frequency and assign spoilage types
     # PPC Spoilage %
