@@ -196,7 +196,7 @@
       # new_value
     # }, data$T_T)
     
-    # scenario 7) transportation time between facility and retail <= 2 days
+    # scenario 7) transportation time between facility and retail <= 3 days
     data$t_T <- ifelse(data$t_T > 3, {
       repeat {
         new_value <- rtri(1, min = 1, max = 10, mode = 5)
