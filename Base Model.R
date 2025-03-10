@@ -29,8 +29,8 @@
     # AT frequency
     ppc_ST_freq <- read.csv("InputData/ppc_STfreq_clean.csv")
     spore_AT_freq <- read.csv("InputData/spore_ATfreq_clean.csv")
-    
-    # Set seed
+      
+    # Set the seed for reproducibility
     set.seed(1)
     
     # Generate input parameter distributions 
@@ -185,18 +185,31 @@
     # data$T_H <- temps
     
     ## (b) Define shelf-life day for all units
-    ## Day 35
     data$t_H = 28
     
     # scenario 5) and 6) transportation temperature between facility and retail <= 7C or 5C (run this the last)
-    data$T_T <- ifelse(data$T_T > 5, rtri(1, min = 1.7, max = 10.0, mode = 4.4), data$T_T)
+    data$T_T <- ifelse(data$T_T > 7, {
+      repeat {
+        new_value <- rtri(1, min = 1.7, max = 10.0, mode = 4.4)
+        if (new_value <= 5) break
+      }
+      new_value
+    }, data$T_T)
     
-    # Generate spoilage frequency and assign spoilage types
+    # scenario 7) transportation temperature between facility and retail <= 5 days
+    # data$t_T <- ifelse(data$t_T > 5, {
+      # repeat {
+        # new_value <- rtri(1, min = 1, max = 10, mode = 5)
+        # if (new_value <= 5) break
+      # }
+      # new_value
+    # }, data$t_T)
+    
     # PPC Spoilage %
     # Good Plant
-    # data <- data %>%
-      # group_by(lot_id) %>%
-      # mutate (P_ppc = runif(1, 0.125, 0.294))
+    data <- data %>%
+      group_by(lot_id) %>%
+      mutate (P_ppc = runif(1, 0.125, 0.294))
     
     # Medium Plant
     # data <- data %>%
@@ -204,12 +217,12 @@
       # mutate(P_ppc = runif(1, 0.4, 0.625))
     
     # Bad Plant
-    data <- data %>%
-      group_by(lot_id) %>%
-      mutate (P_ppc = runif(1, 0.778, 1))
+    # data <- data %>%
+      # group_by(lot_id) %>%
+      # mutate (P_ppc = runif(1, 0.778, 1))
     
     # Sanity check 
-    # data$P_ppc = 0
+    # data$P_ppc = 1
     
     # Assign spoilage type
     result_list <- list()
@@ -402,20 +415,108 @@
      }
     
     final_conc <- do.call(rbind, all_simulations)
+    df <- final_conc
     
     # Generate output 
     model_data_1 <- model_data[rep(1:nrow(model_data), each = 29), ]
     model_data_sub <- model_data_1[,c("lot_id","unit_id","N0","spoilage_type", "STorAT")]
-    # model_data_sub <- model_data_1[,c("lot_id","unit_id","spoilage_type", "t_F", "T_F", "t_T", "T_T", 
-                                    # "t_S", "T_S", "t_T2", "T_T2", "T_H")]
-    # model_data_sub <- model_data_sub <- model_data_1[,c("t_F", "T_F", "t_T", "T_T", "t_S", "T_S", 
-                                                        # "t_T2", "T_T2", "T_H", "P_ppc", "N0")]
     count_result <- final_conc[,c("time","N","logN")]
     df <- cbind(model_data_sub,count_result)
     df$logN[df$logN == -Inf] <- -2
     
-    # Base model output (cumulative distribution)
-    percentiles_Bad <- df_D21_Bad %>%
+    # Get output for sensitivity analysis
+    # model_data_sub <- model_data_1[,c("t_F", "T_F", "t_T", "T_T", "t_S", "T_S", 
+                                      # "t_T2", "T_T2", "T_H","N0")]
+    # count_result <- final_conc[,c("time","logN")]
+    # df <- cbind(model_data_sub,count_result)
+    # df$logN[df$logN == -Inf] <- -2
+    # Good_Plant_D21_SA = subset(df, time == "21")
+    # Medium_Plant_D21_SA = subset(df, time == "21")
+    # Medium_Plant_D14_SA = subset(df, time == "14")
+    # Bad_Plant_D21_SA = subset(df, time == "21")
+    # Bad_Plant_D7_SA = subset(df, time == "7")
+    # Good_Plant_D21_SA$time <- NULL
+    # Medium_Plant_D21_SA$time <- NULL
+    # Medium_Plant_D14_SA$time <- NULL
+    # Bad_Plant_D21_SA$time <- NULL
+    # Bad_Plant_D7_SA$time <- NULL
+    # write.csv(Good_Plant_D21_SA, "Good_Plant_D21_SA.csv")
+    # write.csv(Medium_Plant_D21_SA, "Medium_Plant_D21_SA.csv")
+    # write.csv(Medium_Plant_D14_SA, "Medium_Plant_D14_SA.csv")
+    # write.csv(Bad_Plant_D21_SA, "Bad_Plant_D21_SA.csv")
+    # write.csv(Bad_Plant_D7_SA, "Bad_Plant_D7_SA.csv")
+    
+    # Baseline model output (percent > 6 log over shelf-life)
+    # Calculate the sum of logN over 6 logs for each lot_id
+    summary_stats_Good_Total <- list()
+    for (i in 1:28) {
+      filtered_data <- subset(df, time == i)
+      percent <- filtered_data %>%
+        group_by(lot_id) %>%  
+        summarise(percent = sum(logN > 6))
+      percent$median_percent <- median(percent$percent)
+      percent$perc_5 <- quantile(percent$percent, probs = 0.05)
+      percent$perc_95 <- quantile(percent$percent, probs = 0.95)
+      percent <- percent[c("median_percent", "perc_5","perc_95")][1,]
+      summary_stats_Good_Total[[i]] <- percent
+    }
+    summary_stats_Good_Total <- do.call(rbind,summary_stats_Good_Total)
+    summary_stats_Good_Total$Plant = "Good"
+    summary_stats_Good_Total$Bacteria = "Total"
+    summary_stats = rbind(summary_stats_Good_Total, summary_stats_Good_PPC, summary_stats_Good_Spore, 
+                          summary_stats_Medium_Total, summary_stats_Medium_PPC, summary_stats_Medium_Spore, 
+                          summary_stats_Bad_Total, summary_stats_Bad_PPC, summary_stats_Bad_Spore)
+    summary_stats$day <- rep(1:28, times = 9)
+    
+    # Figure 2
+    summary_stats$Plant <- factor(summary_stats$Plant, levels = c("Good", "Medium", "Bad"))
+    
+    custom_labels <- c("Good" = "Long Shelf-life Milk Plant",
+                       "Medium" = "Medium Shelf-life Milk Plant",
+                       "Bad" = "Short Shelf-life Milk Plant")
+    
+    bacteria_labels <- c("Total" = "Total Bacterial Count",
+                         "PPC" = "Gram-negative Bacteria",
+                         "Spore" = "Spore-forming Bacteria")
+    
+    perc_spoil = ggplot(summary_stats, aes(x = day)) +
+      geom_line(aes(y = median_percent, color = Bacteria, linetype = "Median"), size = 1) +
+      geom_line(aes(y = perc_5, color = Bacteria, linetype = "5th and 95th Percentiles"), size = 0.5) +
+      geom_line(aes(y = perc_95, color = Bacteria, linetype = "5th and 95th Percentiles"), size = 0.5) +
+      geom_hline(yintercept = 25, linetype = "solid", color = "red") +
+      
+      facet_wrap(~ Plant, labeller = as_labeller(custom_labels), scales = "free_y") +  # Allow free y-scale and space facets more
+      labs(x = "Days of refrigerated storage", 
+           y = "Proportion of spoiled milk containers",
+           color = "Bacteria Type") +
+      guides(linetype = "none") +
+      scale_x_continuous(limits = c(0, 28), breaks = seq(0, 28, 4), expand = c(0, 0)) +  # Keep no padding around x-axis
+      scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), labels = scales::percent_format(scale = 1), expand = c(0, 0)) +  # Keep no padding around y-axis
+      scale_color_manual(values = c("Total" = "blue", 
+                                    "PPC" = "brown", 
+                                    "Spore" = "darkgreen"),
+                         labels = bacteria_labels) +
+      scale_linetype_manual(values = c("Median" = "solid", "5th and 95th Percentiles" = "dashed")) +
+      theme_minimal() +
+      theme(panel.grid.major = element_blank(),  
+            panel.grid.minor = element_blank(),
+            axis.ticks = element_line(color = "black"), 
+            axis.ticks.length = unit(0.2, "cm"),
+            axis.line = element_line(color = "black"),
+            strip.background = element_blank(),  
+            strip.text = element_text(size = 14, margin = margin(b = 10)),
+            axis.title = element_text(size = 14),  
+            axis.text = element_text(size = 12),  
+            legend.text = element_text(size = 12))  
+    
+    ggsave(filename = "Figure2_final.png", 
+           plot = perc_spoil, 
+           width = 15, height = 7, units = "in", dpi = 300,
+           bg = "white")
+    
+    # Figure 3
+    df_Bad_D21 <- subset(df, time == "21")
+    percentiles_Bad_D21 <- df_Bad_D21 %>%
       group_by(lot_id) %>%
       summarize(
         p0 = quantile(logN, 0),
@@ -428,203 +529,50 @@
         p70 = quantile(logN, 0.70),
         p80 = quantile(logN, 0.80),
         p90 = quantile(logN, 0.90),
-        p95 = quantile(logN, 0.95),
         p100 = quantile(logN, 1)
       )
+    medians_Bad_D21 <- apply(percentiles_Bad_D21[-1], 2, median)
+    percentile_5_Bad_D21 <- apply(percentiles_Bad_D21[-1], 2, function(x) quantile(x, 0.05))
+    percentile_95_Bad_D21 <- apply(percentiles_Bad_D21[-1], 2, function(x) quantile(x, 0.95))
+    result_Bad_D21 = rbind(medians_Bad_D21, percentile_5_Bad_D21, percentile_95_Bad_D21)
+    quantiles = c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)
+    result_Bad_D21 = rbind(quantiles,result_Bad_D21)
+    rownames(result_Bad_D21) = c("quantiles","medians","percentile_5","percentile_95")
+    result_Bad_D21 = t(result_Bad_D21)
+    result_Bad_D21 = as.data.frame(result_Bad_D21)
     
-    means_Bad <- df_D21_Bad %>%
-      group_by(lot_id) %>%
-      summarize(
-        means = mean(logN)
-      )
+    datasets <- list(result_Good_D7, result_Medium_D7,result_Bad_D7,
+                     result_Good_D14, result_Medium_D14, result_Bad_D14, 
+                     result_Good_D21,result_Medium_D21, result_Bad_D21)
     
-    medians_Bad <- apply(percentiles_Bad[-1], 2, median)
-    percentile_2.5_Bad <- apply(percentiles_Bad[-1], 2, function(x) quantile(x, 0.025))
-    percentile_95_Bad <- apply(percentiles_Bad[-1], 2, function(x) quantile(x, 0.95))
-    percentile_97.5_Bad <- apply(percentiles_Bad[-1], 2, function(x) quantile(x, 0.975))
-    result_Bad = rbind(medians_Bad, percentile_2.5_Bad, percentile_95_Bad, percentile_97.5_Bad)
-    quantiles = c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.95, 1)
-    result_Bad = rbind(quantiles,result_Bad)
-    rownames(result_Bad) = c("quantiles","medians","percentile_2.5","percentile_95", "percentile_97.5")
-    result_Bad = t(result_Bad)
-    result_Bad = as.data.frame(result_Bad)
+    titles <- c("(A) Long Shelf-life Milk Plant Day 7", "(D) Medium Shelf-life Milk Plant Day 7", "(G) Short Shelf-life Milk Plant Day 7",
+                "(B) Long Shelf-life Milk Plant Day 14", "(E) Medium Shelf-life Milk Plant Day 14", "(H) Short Shelf-life Milk Plant Day 14",
+                "(C) Long Shelf-life Milk Plant Day 21", "(F) Medium Shelf-life Milk Plant Day 21", "(I) Short Shelf-life Milk Plant Day 21")
     
-    # Variability ratio 
-    VR_Bad = result_Bad[11,2]/result_Bad[6,2]
-    # Uncertainty ratio 
-    UR_Bad = result_Bad[6,4]/result_Bad[6,2]
-    # Overall Uncertainty Ratio 
-    OUR_Bad = result_Bad[11,4]/result_Bad[6,2]
+    plots <- lapply(1:length(datasets), function(i) {
+      ggplot(datasets[[i]], aes(x = medians, y = quantiles)) +
+        geom_line(color = "black") +
+        geom_line(aes(x = percentile_5, y = quantiles), color = "black", linetype = "dashed") +
+        geom_line(aes(x = percentile_95, y = quantiles), color = "black", linetype = "dashed") +
+        geom_vline(xintercept = 6, color = "black", linetype = "solid") + 
+        xlim(-2, 8) +
+        ylim(0, 1) +
+        labs(x = expression("log"[10]*" CFU/mL"), y = "Percentiles", title = titles[i]) +
+        scale_x_continuous(breaks = seq(-2, 8, by = 1)) +  
+        scale_y_continuous(breaks = seq(0, 1, by = 0.1)) + 
+        theme_minimal() +
+        theme(panel.grid.major = element_blank(), 
+              panel.grid.minor = element_blank(),
+              axis.ticks = element_line(color = "black", size = 0.5), 
+              axis.line = element_line(color = "black", size = 0.5))  
+    })
+    bacterial_concentration =  
+      grid.arrange(plots[[1]], plots[[2]], plots[[3]], 
+                   plots[[4]], plots[[5]], plots[[6]], 
+                   plots[[7]], plots[[8]], plots[[9]], 
+                   nrow = 3, ncol = 3)
+    ggsave(filename = "Figure3_final.png", 
+           plot = bacterial_concentration, 
+           width = 15, height = 7, units = "in", dpi = 300,
+           bg = "white")
     
-    par(mfrow = c(1, 3))
-    plot(result_Bad$quantiles ~ result_Bad$medians, type = "l", 
-         col = "black", xlab = expression("log"[10]*"CFU/mL at shelf-life day 21"), ylab = "Percentiles", main = "Bad Plant")
-    polygon(c(result_Bad$percentile_2.5, rev(result_Bad$percentile_97.5)),
-            c(result_Bad$quantiles, rev(result_Bad$quantiles)),
-            col = "grey", border = NA)
-    lines(result_Bad$quantiles ~ result_Bad$medians, type = "l", col = "black")
-    lines(result_Bad$quantiles ~ result_Bad$percentile_95, type = "l", col = "black", lty = 2)
-    points(result_Bad[6,2], 0.5, col = "black", pch = 16)
-    text(result_Bad[6,2], 0.5, labels = "A", pos = 3, cex = 0.8, col = "black")
-    points(result_Bad[11,2], 0.95, col = "black", pch = 16)
-    text(result_Bad[11,2], 0.95, labels = "B", pos = 3, cex = 0.8, col = "black")
-    points(result_Bad[6,4], 0.5, col = "black", pch = 16)
-    text(result_Bad[6,4], 0.5, labels = "C", pos = 3, cex = 0.8, col = "black")
-    points(result_Bad[11,4], 0.95, col = "black", pch = 16)
-    text(8.8, 0.9, labels = "D", pos = 3, cex = 0.8, col = "black")
-    
-    # Base model output (percent > 6 log over shelf-life)
-    # Calculate the sum of logN over 6 logs for each lot_id
-    summary_stats_bad_sc6 <- list()
-    for (i in 1:28) {
-      filtered_data <- subset(df, time == i)
-      percent <- filtered_data %>%
-        group_by(lot_id) %>%
-        summarise(percent = sum(logN > 6))
-      percent$mean_percent <- mean(percent$percent)
-      percent$median_percent <- median(percent$percent)
-      percent$perc_5 <- quantile(percent$percent, probs = 0.05)
-      percent$perc_95 <- quantile(percent$percent, probs = 0.95)
-      percent <- percent[c("mean_percent", "median_percent", "perc_5","perc_95")][1,]
-      summary_stats_bad_sc6[[i]] <- percent
-    }
-    summary_stats_bad_sc6 <- do.call(rbind,summary_stats_bad_sc6)
-    
-    # Plot percent > 6 log over shelf-life
-    par(mfrow = c(1, 3))
-    shelflife_days = c(1:28)
-    plot(summary_stats_bad$median_percent ~ shelflife_days, type = "l", 
-         col = "black", xlab = "Shelf-life days", ylab = "Percent milk containers over 6 log", 
-         ylim = c(0,85), main = "Short Shelf-life Milk Plant")
-    lines(summary_stats_bad$perc_5 ~ shelflife_days, type = "l", col = "black", lty = 4)
-    lines(summary_stats_bad$perc_95 ~ shelflife_days, type = "l", col = "black", lty = 2)
-    legend(x = 0.1, y = 90, legend = c("Median", "5th Percentile", "95th Percentile"), 
-           col = "black", lty = c(1, 4, 2), bty = "n")
-    abline(h = 25, col = "red")
-    
-    # Validation 
-    # microflora
-    Microflora <- sample(SPC_D1, 10000, replace = TRUE)
-    
-    Spore_D7 =  df_D7$N 
-    SPC_D7_sim = log10(Spore_D7 + Microflora)
-    # CVTA_D7_sim = df_D7$logN
-    
-    Spore_D14 = df_D14$N
-    SPC_D14_sim = log10(Spore_D14 + Microflora)
-    # CVTA_D14_sim = df_D14$logN
-    
-    Spore_D21 = df_D21$N
-    SPC_D21_sim = log10(Spore_D21 + Microflora)
-    # CVTA_D21_sim = df_D21$logN
-    
-    # Calculate the mean and median conc. for each day 
-    # result_bad <- df %>%
-      # group_by(time) %>%
-      # summarize(mean_logN = mean(logN),
-                # median_logN = median(logN),
-                # meanN = mean(N),
-                # log_meanN = log10(mean(N)))
-
-# Density plot for validation result 
-PPC_D7 <- data.frame(
-  value = c(CVTA_D7, CVTA_D7_sim),
-  group = factor(rep(c("Observed","Simulated"), times = c(length(CVTA_D7),length(CVTA_D7_sim))))
-)
-
-PPC_D14 <- data.frame(
-  value = c(CVTA_D14, CVTA_D14_sim),
-  group = factor(rep(c("Observed","Simulated"), times = c(length(CVTA_D14),length(CVTA_D14_sim))))
-)
-
-PPC_D21 <- data.frame(
-  value = c(CVTA_D21, CVTA_D21_sim),
-  group = factor(rep(c("Observed","Simulated"), times = c(length(CVTA_D21),length(CVTA_D21_sim))))
-)
-
-SPC_D7 <- data.frame(
-  value = c(SPC_D7, SPC_D7_sim),
-  group = factor(rep(c("Observed","Simulated"), times = c(length(SPC_D7),length(SPC_D7_sim))))
-)
-
-SPC_D14 <- data.frame(
-  value = c(SPC_D14, SPC_D14_sim),
-  group = factor(rep(c("Observed","Simulated"), times = c(length(SPC_D14),length(SPC_D14_sim))))
-)
-
-SPC_D21 <- data.frame(
-  value = c(SPC_D21, SPC_D21_sim),
-  group = factor(rep(c("Observed","Simulated"), times = c(length(SPC_D21),length(SPC_D21_sim))))
-)
-
-plot_PPC_D7 = ggplot(PPC_D7, aes(x = value, fill = group)) +
-  geom_density(aes(linetype = group), alpha = 0) +
-  scale_linetype_manual(values = c("solid", "dashed")) +
-  labs(title = "Density Plot of PPC Bacterial Count (Day 7)", 
-       x = substitute(log[10]*"CFU/mL"), 
-       y = "Density") +
-  scale_x_continuous(limits = c(0, 10)) +
-  scale_y_continuous(limits = c(0, 2)) +
-  theme_minimal() + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
-
-plot_PPC_D14 = ggplot(PPC_D14, aes(x = value, fill = group)) +
-  geom_density(aes(linetype = group), alpha = 0) +
-  scale_linetype_manual(values = c("solid", "dashed")) +
-  labs(title = "Density Plot of PPC Bacterial Count (Day 14)", 
-       x = substitute(log[10]*"CFU/mL"), 
-       y = "Density") +
-  scale_x_continuous(limits = c(0, 10)) +
-  scale_y_continuous(limits = c(0, 2)) +
-  theme_minimal() + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
-
-plot_PPC_D21 = ggplot(PPC_D21, aes(x = value, fill = group)) +
-  geom_density(aes(linetype = group), alpha = 0) +
-  labs(title = "Density Plot of PPC Bacterial Count (Day 21)", 
-       x = substitute(log[10]*"CFU/mL"), 
-       y = "Density") +
-  scale_x_continuous(limits = c(0, 10)) +
-  scale_y_continuous(limits = c(0, 2)) +
-  theme_minimal() + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
-
-plot_Spore_D7 = ggplot(SPC_D7, aes(x = value, fill = group)) +
-  geom_density(aes(linetype = group), alpha = 0) +
-  labs(title = "Density Plot of Spore-forming Bacterial Count (Day 7)", 
-       x = substitute(log[10]*"CFU/mL"), 
-       y = "Density") +
-  scale_x_continuous(limits = c(0, 8)) +
-  scale_y_continuous(limits = c(0, 0.5)) +
-  theme_minimal() + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
-
-plot_Spore_D14 = ggplot(SPC_D14, aes(x = value, fill = group)) +
-  geom_density(aes(linetype = group), alpha = 0) +
-  labs(title = "Density Plot of Spore-forming Bacterial Count (Day 14)", 
-       x = substitute(log[10]*"CFU/mL"), 
-       y = "Density") +
-  scale_x_continuous(limits = c(0, 8)) +
-  scale_y_continuous(limits = c(0, 0.5)) +
-  theme_minimal() + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
-
-plot_Spore_D21 = ggplot(SPC_D21, aes(x = value, fill = group)) +
-  geom_density(aes(linetype = group), alpha = 0) +
-  labs(title = "Density Plot of Spore-forming Bacterial Count (Day 21)", 
-       x = substitute(log[10]*"CFU/mL"), 
-       y = "Density") +
-  scale_x_continuous(limits = c(0, 8)) +
-  scale_y_continuous(limits = c(0, 0.5)) +
-  theme_minimal() + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank())
-
-grid.arrange(plot_PPC_D7, plot_PPC_D14, plot_PPC_D21, 
-             plot_Spore_D7, plot_Spore_D14, plot_Spore_D21, 
-             ncol = 3)
