@@ -188,28 +188,28 @@
     data$t_H = 28
     
     # scenario 5) and 6) transportation temperature between facility and retail <= 7C or 5C (run this the last)
-    data$T_T <- ifelse(data$T_T > 7, {
-      repeat {
-        new_value <- rtri(1, min = 1.7, max = 10.0, mode = 4.4)
-        if (new_value <= 5) break
-      }
-      new_value
-    }, data$T_T)
-    
-    # scenario 7) transportation temperature between facility and retail <= 5 days
-    # data$t_T <- ifelse(data$t_T > 5, {
+    # data$T_T <- ifelse(data$T_T > 7, {
       # repeat {
-        # new_value <- rtri(1, min = 1, max = 10, mode = 5)
+        # new_value <- rtri(1, min = 1.7, max = 10.0, mode = 4.4)
         # if (new_value <= 5) break
       # }
       # new_value
-    # }, data$t_T)
+    # }, data$T_T)
+    
+    # scenario 7) transportation time between facility and retail <= 2 days
+    data$t_T <- ifelse(data$t_T > 3, {
+      repeat {
+        new_value <- rtri(1, min = 1, max = 10, mode = 5)
+        if (new_value <= 3) break
+      }
+      new_value
+    }, data$t_T)
     
     # PPC Spoilage %
     # Good Plant
-    data <- data %>%
-      group_by(lot_id) %>%
-      mutate (P_ppc = runif(1, 0.125, 0.294))
+    # data <- data %>%
+      # group_by(lot_id) %>%
+      # mutate (P_ppc = runif(1, 0.125, 0.294))
     
     # Medium Plant
     # data <- data %>%
@@ -217,12 +217,9 @@
       # mutate(P_ppc = runif(1, 0.4, 0.625))
     
     # Bad Plant
-    # data <- data %>%
-      # group_by(lot_id) %>%
-      # mutate (P_ppc = runif(1, 0.778, 1))
-    
-    # Sanity check 
-    # data$P_ppc = 1
+    data <- data %>%
+      group_by(lot_id) %>%
+      mutate (P_ppc = runif(1, 0.778, 1))
     
     # Assign spoilage type
     result_list <- list()
