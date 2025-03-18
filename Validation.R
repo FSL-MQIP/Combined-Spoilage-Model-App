@@ -1,4 +1,5 @@
 library(dplyr)
+library(binom)
 
 # Process VSL data 
 combined_data <- read.csv("combined_data.csv")
@@ -14,16 +15,19 @@ CVTA_D7 <- log10(combined_data_PPC$CVTA_D7)
 CVTA_D7 <- na.omit(CVTA_D7)
 summary_stats_CVTA_D7 <- quantile(CVTA_D7, probs = c(0.25,0.5,0.75))
 percentage_above_6_CVTA_D7 <- mean(CVTA_D7 > 6)*100
+binom.confint(x = sum(CVTA_D7>6), n = 267, conf.level = 0.9, method = "wilson")
 
 CVTA_D14 <- log10(combined_data_PPC$CVTA_D14)
 CVTA_D14 <- na.omit(CVTA_D14)
 summary_stats_CVTA_D14 <- quantile(CVTA_D14, probs = c(0.25,0.5,0.75))
 percentage_above_6_CVTA_D14 <- mean(CVTA_D14 > 6)*100
+binom.confint(x = sum(CVTA_D14>6), n = 267, conf.level = 0.9, method = "wilson")
 
 CVTA_D21 <- log10(combined_data_PPC$CVTA_D21)
 CVTA_D21 <- na.omit(CVTA_D21)
 summary_stats_CVTA_D21 <- quantile(CVTA_D21, probs = c(0.25,0.5,0.75))
 percentage_above_6_CVTA_D21 <- mean(CVTA_D21 > 6)*100
+binom.confint(x = sum(CVTA_D21>6), n = 127, conf.level = 0.9, method = "wilson")
 
 combined_data_Spore <- subset(combined_data_sub, spoilagetype %in% c("spore spoilage", "no spoilage"))
 SPC_D1 <- combined_data_sub$SPC_DI
@@ -31,16 +35,19 @@ SPC_D7 <- log10(combined_data_Spore$SPC_D7)
 SPC_D7 <- na.omit(SPC_D7)
 summary_stats_SPC_D7 <- quantile(SPC_D7, probs = c(0.25,0.5,0.75))
 percentage_above_6_SPC_D7 <- mean(SPC_D7 > 6)*100
+binom.confint(x = sum(SPC_D7>6), n = 188, conf.level = 0.9, method = "wilson")
 
 SPC_D14 <- log10(combined_data_Spore$SPC_D14)
 SPC_D14 <- na.omit(SPC_D14)
 summary_stats_SPC_D14 <- quantile(SPC_D14, probs = c(0.25,0.5,0.75))
 percentage_above_6_SPC_D14 <- mean(SPC_D14 > 6)*100
+binom.confint(x = sum(SPC_D14>6), n = 189, conf.level = 0.9, method = "wilson")
 
 SPC_D21 <- log10(combined_data_Spore$SPC_D21)
 SPC_D21 <- na.omit(SPC_D21)
 summary_stats_SPC_D21 <- quantile(SPC_D21, probs = c(0.25,0.5,0.75))
 percentage_above_6_SPC_D21 <- mean(SPC_D21 > 6)*100
+binom.confint(x = sum(SPC_D21>6), n = 133, conf.level = 0.9, method = "wilson")
 
 # Validation 
 # Load packages

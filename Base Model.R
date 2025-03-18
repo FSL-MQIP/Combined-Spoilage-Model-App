@@ -197,13 +197,13 @@
     # }, data$T_T)
     
     # scenario 7) transportation time between facility and retail <= 3 days
-    data$t_T <- ifelse(data$t_T > 3, {
-      repeat {
-        new_value <- rtri(1, min = 1, max = 10, mode = 5)
-        if (new_value <= 3) break
-      }
-      new_value
-    }, data$t_T)
+    # data$t_T <- ifelse(data$t_T > 3, {
+      # repeat {
+        # new_value <- rtri(1, min = 1, max = 10, mode = 5)
+        # if (new_value <= 3) break
+      # }
+      # new_value
+    # }, data$t_T)
     
     # PPC Spoilage %
     # Good Plant
